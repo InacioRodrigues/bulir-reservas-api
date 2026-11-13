@@ -5,6 +5,7 @@ export default registerAs('app', () => ({
   nodeEnv: process.env.NODE_ENV || 'development',
   appUrl: process.env.APP_URL || 'http://localhost:3000',
   apiPrefix: process.env.API_PREFIX || 'api/v1',
+  bodyLimit: process.env.BODY_LIMIT || '16kb',
   corsOrigins: (process.env.CORS_ORIGINS || '').split(','),
   throttle: {
     ttl: parseInt(process.env.THROTTLE_TTL || '60', 10),

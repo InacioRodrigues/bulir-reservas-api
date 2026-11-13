@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { NextFunction, Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
@@ -8,15 +9,19 @@ import cookieParser from 'cookie-parser';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import { openApiSpec } from './config/openapi.definition';
 import { AppModule } from './app.module';
+import { assignRequestIds } from './common/http/request-ids';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
+    // Parsers registados à mão (abaixo), por ordem e com limite explícito.
+    bodyParser: false,
   });
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('app.port', 3000);
   const prefix = configService.get<string>('app.apiPrefix', 'api/v1');
+  const bodyLimit = configService.get<string>('app.bodyLimit', '16kb');
   const corsOrigins = configService.get<string[]>('app.corsOrigins', [
     'http://localhost:3000',
   ]);
@@ -31,6 +36,17 @@ async function bootstrap() {
     }),
   );
   app.use(cookieParser());
+
+  // Ids do pedido antes do parser: erros de corpo também levam correlationId.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    assignRequestIds(req, res);
+    next();
+  });
+
+  // A API só aceita JSON. Limite pequeno: o maior corpo legítimo (um serviço
+  // com descrição de 1000 caracteres) tem poucos KB; acima disso → 413.
+  // Sem parser de urlencoded/multipart: menos superfície de ataque.
+  app.useBodyParser('json', { limit: bodyLimit });
   app.use(compression());
 
   // CORS

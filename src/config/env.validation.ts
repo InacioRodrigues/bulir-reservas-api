@@ -12,6 +12,12 @@ export const envSchema = z.object({
     .default('http://localhost:3000')
     .transform((val) => val.split(',')),
 
+  // Tamanho máximo do corpo JSON (sintaxe do `bytes`: 16kb, 1mb, ...).
+  BODY_LIMIT: z
+    .string()
+    .regex(/^\d+(b|kb|mb)$/i, 'BODY_LIMIT deve ser do tipo 16kb ou 1mb')
+    .default('16kb'),
+
   THROTTLE_TTL: z.coerce.number().default(60),
   THROTTLE_LIMIT: z.coerce.number().default(100),
   // Pedidos/minuto por IP em POST /auth/login e /auth/register.

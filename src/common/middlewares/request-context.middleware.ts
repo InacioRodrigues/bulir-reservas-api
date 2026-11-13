@@ -1,31 +1,15 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
-import { Request, Response, NextFunction } from 'express';
-import { v4 as uuidv4 } from 'uuid';
+import { Response, NextFunction } from 'express';
 import { RequestContext } from '../helpers/request-context';
+import { assignRequestIds, RequestWithIds } from '../http/request-ids';
 
 @Injectable()
 export class RequestContextMiddleware implements NestMiddleware {
-  use(req: Request, res: Response, next: NextFunction) {
-    const requestId = (req.headers['x-request-id'] as string) || uuidv4();
-    const correlationId =
-      (req.headers['x-correlation-id'] as string) || uuidv4();
+  use(req: RequestWithIds, res: Response, next: NextFunction) {
+    // Os ids normalmente já foram atribuídos em `main.ts` (antes do parser do
+    // corpo); aqui só os reutilizamos e abrimos o contexto assíncrono.
+    const { requestId, correlationId } = assignRequestIds(req, res);
 
-    // Attach to request object so Pino can pick it up
-    (req as any).requestId = requestId;
-    (req as any).correlationId = correlationId;
-
-    // Set response headers
-    res.setHeader('x-request-id', requestId);
-    res.setHeader('x-correlation-id', correlationId);
-
-    RequestContext.run(
-      {
-        requestId,
-        correlationId,
-      },
-      () => {
-        next();
-      },
-    );
+    RequestContext.run({ requestId, correlationId }, () => next());
   }
 }

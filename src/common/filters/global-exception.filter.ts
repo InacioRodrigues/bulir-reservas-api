@@ -21,6 +21,7 @@ const DEFAULT_CODES: Record<number, string> = {
   [HttpStatus.NOT_FOUND]: 'NOT_FOUND',
   [HttpStatus.CONFLICT]: 'CONFLICT',
   [HttpStatus.PAYLOAD_TOO_LARGE]: 'PAYLOAD_TOO_LARGE',
+  [HttpStatus.UNSUPPORTED_MEDIA_TYPE]: 'UNSUPPORTED_MEDIA_TYPE',
   [HttpStatus.TOO_MANY_REQUESTS]: 'TOO_MANY_REQUESTS',
 };
 
@@ -30,9 +31,30 @@ const DEFAULT_MESSAGES: Record<number, string> = {
   [HttpStatus.FORBIDDEN]: 'Sem permissão para realizar esta operação',
   [HttpStatus.NOT_FOUND]: 'Recurso não encontrado',
   [HttpStatus.PAYLOAD_TOO_LARGE]: 'Corpo do pedido demasiado grande',
+  [HttpStatus.UNSUPPORTED_MEDIA_TYPE]: 'Tipo de conteúdo não suportado',
   [HttpStatus.TOO_MANY_REQUESTS]:
     'Demasiados pedidos. Tente novamente dentro de instantes',
 };
+
+/**
+ * Erros do parser do corpo (Express/`body-parser`) não são `HttpException`:
+ * são objetos `http-errors` com `status` e `expose: true` (ex.: JSON
+ * malformado → 400, corpo acima do limite → 413). Sem este tratamento
+ * chegariam ao cliente como 500.
+ */
+function clientHttpErrorStatus(exception: unknown): number | undefined {
+  if (typeof exception !== 'object' || exception === null) return undefined;
+  const { status, expose } = exception as {
+    status?: unknown;
+    expose?: unknown;
+  };
+  return expose === true &&
+    typeof status === 'number' &&
+    status >= 400 &&
+    status < 500
+    ? status
+    : undefined;
+}
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -51,6 +73,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const correlationId =
       (request as any).correlationId ?? request.headers['x-correlation-id'];
 
+    const clientStatus = clientHttpErrorStatus(exception);
+
     if (exception instanceof BaseException) {
       status = exception.getStatus();
       message = exception.message;
@@ -61,6 +85,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       status = exception.getStatus();
       code = DEFAULT_CODES[status] ?? 'HTTP_ERROR';
       message = DEFAULT_MESSAGES[status] ?? exception.message;
+    } else if (clientStatus !== undefined) {
+      status = clientStatus;
+      code = DEFAULT_CODES[status] ?? 'BAD_REQUEST';
+      message =
+        (exception as { type?: string }).type === 'entity.parse.failed'
+          ? 'O corpo do pedido não é JSON válido'
+          : (DEFAULT_MESSAGES[status] ?? DEFAULT_MESSAGES[400]);
     } else if (exception instanceof Error) {
       // Erro não previsto (ex.: falha da BD). A mensagem original nunca vai
       // para o cliente: pode expor SQL, nomes de tabelas ou dados.
