@@ -20,7 +20,8 @@
       "@common/*": ["src/common/*"],
       "@config/*": ["src/config/*"],
       "@providers/*": ["src/providers/*"],
-      "@database/*": ["src/database/*"]
+      "@database/*": ["src/database/*"],
+      "@test/*": ["test/*"]
     },
     "incremental": true,
     "skipLibCheck": true,

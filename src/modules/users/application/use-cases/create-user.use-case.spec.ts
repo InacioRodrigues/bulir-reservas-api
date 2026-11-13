@@ -1,107 +1,101 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
 import { CreateUserUseCase } from './create-user.use-case';
-import {
-  USER_REPOSITORY_TOKEN,
-  IUserRepository,
-} from '../../domain/repositories/user.repository.interface';
-import { User, UserProps } from '../../domain/entities/user.entity';
 import { UserRole } from '../../domain/entities/user-role';
+import {
+  EmailAlreadyExistsError,
+  NifAlreadyExistsError,
+} from '../../domain/errors/user.errors';
 import { CreateUserDto } from '../dto/create-user.dto';
+import { InMemoryUserRepository } from '@test/fakes/in-memory-user.repository';
+import { FakePasswordHasher } from '@test/fakes/fake-password-hasher';
 
-// ─── Mock Factory ─────────────────────────────────────────────────────────────
-const mockUserRepository = (): jest.Mocked<IUserRepository> => ({
-  create: jest.fn(),
-  update: jest.fn(),
-  findById: jest.fn(),
-  findByEmail: jest.fn(),
-  findByNif: jest.fn(),
-});
-
-// ─── User Builder ─────────────────────────────────────────────────────────────
-const buildUser = (overrides: Partial<UserProps> = {}): User =>
-  new User({
-    id: 'uuid-test-001',
-    fullName: 'Test User',
-    nif: '123456789LA041',
-    email: 'test@example.com',
-    passwordHash: '$argon2id$hash',
-    role: UserRole.CLIENT,
-    createdAt: new Date('2026-01-01'),
-    updatedAt: new Date('2026-01-01'),
-    ...overrides,
-  });
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
 describe('CreateUserUseCase', () => {
+  let users: InMemoryUserRepository;
   let useCase: CreateUserUseCase;
-  let userRepository: jest.Mocked<IUserRepository>;
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        CreateUserUseCase,
-        {
-          provide: USER_REPOSITORY_TOKEN,
-          useFactory: mockUserRepository,
-        },
-      ],
-    }).compile();
+  const dto: CreateUserDto = {
+    fullName: 'Ana Paula Domingos',
+    nif: '004512345LA041',
+    email: 'ana@bulir.ao',
+    password: 'Senha123',
+    role: UserRole.CLIENT,
+  };
 
-    useCase = module.get<CreateUserUseCase>(CreateUserUseCase);
-    userRepository = module.get(USER_REPOSITORY_TOKEN);
+  beforeEach(() => {
+    users = new InMemoryUserRepository();
+    useCase = new CreateUserUseCase(users, new FakePasswordHasher());
   });
 
-  afterEach(() => {
-    jest.clearAllMocks();
+  it('cria o utilizador com saldo 0.00 e password em hash', async () => {
+    const user = await useCase.execute(dto);
+
+    expect(user.id).toBeTruthy();
+    expect(user.balance).toBe('0.00');
+    expect(user.role).toBe(UserRole.CLIENT);
+    expect(user.passwordHash).not.toBe(dto.password);
+    expect(users.items).toHaveLength(1);
   });
 
-  it('should be defined', () => {
-    expect(useCase).toBeDefined();
+  it('normaliza e-mail (minúsculas) e NIF (maiúsculas, sem espaços)', async () => {
+    const user = await useCase.execute({
+      ...dto,
+      email: '  Ana@Bulir.AO ',
+      nif: ' 004 512 345 la 041 ',
+    });
+
+    expect(user.email).toBe('ana@bulir.ao');
+    expect(user.nif).toBe('004512345LA041');
   });
 
-  describe('execute()', () => {
-    const dto: CreateUserDto = {
-      fullName: 'New User',
-      nif: '987654321LA042',
-      email: 'new@example.com',
-      password: 'SecurePassword123',
-      role: UserRole.CLIENT,
-    };
+  it('rejeita e-mail duplicado sem distinguir maiúsculas (409 EMAIL_ALREADY_EXISTS)', async () => {
+    await useCase.execute(dto);
 
-    it('should create and persist a new user', async () => {
-      const savedUser = buildUser({ email: dto.email, fullName: dto.fullName });
-
-      userRepository.findByEmail.mockResolvedValue(null);
-      userRepository.create.mockResolvedValue(savedUser);
-
-      const result = await useCase.execute(dto);
-
-      expect(userRepository.findByEmail).toHaveBeenCalledWith(dto.email);
-      expect(userRepository.create).toHaveBeenCalledTimes(1);
-      expect(result).toBeInstanceOf(User);
-      expect(result.email).toBe(dto.email);
+    const promise = useCase.execute({
+      ...dto,
+      nif: '999999999LA999',
+      email: 'ANA@BULIR.AO',
     });
 
-    it('should throw ConflictException when email is already registered', async () => {
-      const existingUser = buildUser({ email: dto.email });
-      userRepository.findByEmail.mockResolvedValue(existingUser);
-
-      await expect(useCase.execute(dto)).rejects.toThrow(ConflictException);
-      expect(userRepository.create).not.toHaveBeenCalled();
+    await expect(promise).rejects.toBeInstanceOf(EmailAlreadyExistsError);
+    await expect(promise).rejects.toMatchObject({
+      code: 'EMAIL_ALREADY_EXISTS',
     });
+    expect(users.items).toHaveLength(1);
+  });
 
-    it('should hash the password before persisting', async () => {
-      const savedUser = buildUser();
-      userRepository.findByEmail.mockResolvedValue(null);
-      userRepository.create.mockResolvedValue(savedUser);
+  it('rejeita NIF duplicado (409 NIF_ALREADY_EXISTS)', async () => {
+    await useCase.execute(dto);
 
-      await useCase.execute(dto);
+    await expect(
+      useCase.execute({
+        ...dto,
+        email: 'outra@bulir.ao',
+        nif: '004512345la041',
+      }),
+    ).rejects.toMatchObject({ code: 'NIF_ALREADY_EXISTS', status: 409 });
+  });
 
-      const createCall = userRepository.create.mock.calls[0][0];
-      // The password hash stored on the entity must not equal the plain-text password
-      expect(createCall.passwordHash).not.toBe(dto.password);
-      expect(createCall.passwordHash).toBeTruthy();
-    });
+  it('em corrida (verificação prévia passa nos dois), o UNIQUE da BD ainda devolve 409', async () => {
+    // Simula dois pedidos simultâneos: ambos veem "não existe" no passo 1.
+    jest.spyOn(users, 'findByEmail').mockResolvedValue(null);
+    jest.spyOn(users, 'findByNif').mockResolvedValue(null);
+
+    const results = await Promise.allSettled([
+      useCase.execute(dto),
+      useCase.execute(dto),
+    ]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((r) => r.status === 'rejected');
+    expect(rejected?.reason).toBeInstanceOf(EmailAlreadyExistsError);
+    expect(users.items).toHaveLength(1);
+  });
+
+  it('permite registar um prestador de serviço', async () => {
+    const user = await useCase.execute({ ...dto, role: UserRole.PROVIDER });
+    expect(user.isProvider()).toBe(true);
+  });
+
+  it('NifAlreadyExistsError é um 409', () => {
+    expect(new NifAlreadyExistsError().getStatus()).toBe(409);
   });
 });

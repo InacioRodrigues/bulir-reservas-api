@@ -121,7 +121,8 @@
       "^@common/(.*)$": "<rootDir>/common/$1",
       "^@config/(.*)$": "<rootDir>/config/$1",
       "^@providers/(.*)$": "<rootDir>/providers/$1",
-      "^@database/(.*)$": "<rootDir>/database/$1"
+      "^@database/(.*)$": "<rootDir>/database/$1",
+      "^@test/(.*)$": "<rootDir>/../test/$1"
     }
   }
 }

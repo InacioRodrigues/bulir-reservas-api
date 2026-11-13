@@ -3,10 +3,12 @@ import { USER_REPOSITORY_TOKEN } from './domain/repositories/user.repository.int
 import { UserRepository } from './infrastructure/repositories/user.repository';
 import { CreateUserUseCase } from './application/use-cases/create-user.use-case';
 import { GetUserUseCase } from './application/use-cases/get-user.use-case';
+import { PASSWORD_HASHER } from './domain/ports/password-hasher.interface';
+import { Argon2PasswordHasher } from './infrastructure/security/argon2-password-hasher';
 
 /**
  * Sem controller próprio: o utilizador é criado em `POST /auth/register` e
- * consultado em `GET /auth/me`. Não há papel ADMIN neste domínio.
+ * consultado em `GET /auth/me`.
  */
 @Module({
   providers: [
@@ -14,10 +16,19 @@ import { GetUserUseCase } from './application/use-cases/get-user.use-case';
       provide: USER_REPOSITORY_TOKEN,
       useClass: UserRepository,
     },
+    {
+      provide: PASSWORD_HASHER,
+      useClass: Argon2PasswordHasher,
+    },
     CreateUserUseCase,
     GetUserUseCase,
   ],
-  exports: [USER_REPOSITORY_TOKEN, CreateUserUseCase, GetUserUseCase],
+  exports: [
+    USER_REPOSITORY_TOKEN,
+    PASSWORD_HASHER,
+    CreateUserUseCase,
+    GetUserUseCase,
+  ],
 })
 export class UsersModule {}
 export { USER_REPOSITORY_TOKEN };
