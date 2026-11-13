@@ -6,7 +6,7 @@ export const walletPaths = {
     post: {
       summary: 'Carregar saldo (CLIENT, simulado)',
       description:
-        'Crédito imediato (não há gateway de pagamento). Saldo e movimento `TOP_UP` no ledger gravados na mesma transação.',
+        'Crédito imediato (não há gateway de pagamento). Saldo e movimento `TOP_UP` no ledger gravados na mesma transação. Limite: 10 pedidos/min por utilizador.',
       tags: ['Wallet'],
       requestBody: {
         required: true,
@@ -57,6 +57,7 @@ export const walletPaths = {
         },
         '400': { $ref: '#/components/responses/ValidationError' },
         '401': { $ref: '#/components/responses/Unauthorized' },
+        '429': { $ref: '#/components/responses/TooManyRequests' },
         '403': errorResponse('`FORBIDDEN`: só clientes carregam saldo', {
           statusCode: 403,
           code: 'FORBIDDEN',

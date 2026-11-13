@@ -107,7 +107,7 @@ export const bookingsPaths = {
     post: {
       summary: 'Reservar um serviço (CLIENT)',
       description:
-        'Numa única transação: débito condicional do cliente (`WHERE balance >= preço`), crédito do prestador, reserva com snapshot do nome/preço e dois movimentos no ledger. Saldo igual ao preço é suficiente.',
+        'Numa única transação: débito condicional do cliente (`WHERE balance >= preço`), crédito do prestador, reserva com snapshot do nome/preço e dois movimentos no ledger. Saldo igual ao preço é suficiente. Limite: 10 pedidos/min por utilizador.',
       tags: ['Bookings'],
       requestBody: {
         required: true,
@@ -126,6 +126,7 @@ export const bookingsPaths = {
         '201': bookingResponse('Reserva criada com sucesso'),
         '400': { $ref: '#/components/responses/ValidationError' },
         '401': { $ref: '#/components/responses/Unauthorized' },
+        '429': { $ref: '#/components/responses/TooManyRequests' },
         '403': errorResponse('`FORBIDDEN`: só clientes reservam', {
           statusCode: 403,
           code: 'FORBIDDEN',
@@ -163,7 +164,7 @@ export const bookingsPaths = {
     patch: {
       summary: 'Cancelar uma reserva (cliente da reserva ou prestador)',
       description:
-        'Numa única transação: `UPDATE ... WHERE status = CONFIRMED` (só um pedido vence), reembolso integral do preço pago ao cliente, débito ao prestador e dois movimentos no ledger.',
+        'Numa única transação: `UPDATE ... WHERE status = CONFIRMED` (só um pedido vence), reembolso integral do preço pago ao cliente, débito ao prestador e dois movimentos no ledger. Limite: 10 pedidos/min por utilizador.',
       tags: ['Bookings'],
       responses: {
         '200': bookingResponse('Reserva cancelada e valor reembolsado', {
@@ -174,6 +175,7 @@ export const bookingsPaths = {
         }),
         '400': { $ref: '#/components/responses/ValidationError' },
         '401': { $ref: '#/components/responses/Unauthorized' },
+        '429': { $ref: '#/components/responses/TooManyRequests' },
         '403': notParticipant,
         '404': bookingNotFound,
         '409': errorResponse(
