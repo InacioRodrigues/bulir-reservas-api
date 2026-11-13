@@ -7,7 +7,9 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Roles } from '@common/decorators/roles.decorator';
+import { MONEY_THROTTLE } from '@common/throttle/throttle-policies';
 import { CurrentUser } from '@common/decorators/user.decorator';
 import { ZodValidationPipe } from '@common/pipes/zod-validation.pipe';
 import { Actor } from '@common/types/actor';
@@ -31,6 +33,7 @@ export class WalletController {
   ) {}
 
   @Post('top-up')
+  @Throttle(MONEY_THROTTLE)
   @Roles(UserRole.CLIENT)
   @HttpCode(HttpStatus.OK)
   async topUp(

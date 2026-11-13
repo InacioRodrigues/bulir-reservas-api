@@ -37,6 +37,8 @@ export const envSchema = z.object({
   THROTTLE_LIMIT: z.coerce.number().default(100),
   // Pedidos/minuto por IP em POST /auth/login e /auth/register.
   AUTH_THROTTLE_LIMIT: z.coerce.number().int().positive().default(5),
+  // Pedidos/minuto por utilizador em reservas, cancelamentos e carregamentos.
+  MONEY_THROTTLE_LIMIT: z.coerce.number().int().positive().default(10),
 
   JWT_ACCESS_SECRET: z.string().min(8),
   JWT_ACCESS_EXPIRATION: z.string().default('15m'),

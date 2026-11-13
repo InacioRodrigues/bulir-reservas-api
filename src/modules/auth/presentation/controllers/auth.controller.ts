@@ -11,6 +11,10 @@ import { Throttle } from '@nestjs/throttler';
 import { GetUserUseCase } from '@modules/users/application/use-cases/get-user.use-case';
 import { UserPresenter } from '@modules/users/presentation/presenters/user.presenter';
 import { Public } from '@common/decorators/public.decorator';
+import {
+  CREDENTIALS_THROTTLE,
+  REFRESH_THROTTLE,
+} from '@common/throttle/throttle-policies';
 import { CurrentUser } from '@common/decorators/user.decorator';
 import { ZodValidationPipe } from '@common/pipes/zod-validation.pipe';
 import {
@@ -28,18 +32,6 @@ import {
 import { LoginUseCase } from '../../application/use-cases/login.use-case';
 import { RefreshSessionUseCase } from '../../application/use-cases/refresh-session.use-case';
 import { LogoutUseCase } from '../../application/use-cases/logout.use-case';
-
-/**
- * Limite apertado nas rotas de credenciais (por IP, por rota): trava força
- * bruta de passwords e criação massiva de contas. Lido em cada pedido para
- * poder ser ajustado por env (ex.: subir nos testes e2e).
- */
-const CREDENTIALS_THROTTLE = {
-  default: {
-    limit: () => Number(process.env.AUTH_THROTTLE_LIMIT ?? 5),
-    ttl: 60_000,
-  },
-};
 
 const toAuthResponse = (result: AuthResult) => ({
   user: UserPresenter.toResponse(result.user),
@@ -84,7 +76,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Throttle(REFRESH_THROTTLE)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @UsePipes(new ZodValidationPipe(refreshSchema))

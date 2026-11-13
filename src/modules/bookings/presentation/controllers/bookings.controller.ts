@@ -7,7 +7,9 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Roles } from '@common/decorators/roles.decorator';
+import { MONEY_THROTTLE } from '@common/throttle/throttle-policies';
 import { CurrentUser } from '@common/decorators/user.decorator';
 import { ZodValidationPipe } from '@common/pipes/zod-validation.pipe';
 import { UuidParamPipe } from '@common/pipes/uuid-param.pipe';
@@ -67,6 +69,7 @@ export class BookingsController {
   }
 
   @Post()
+  @Throttle(MONEY_THROTTLE)
   @Roles(UserRole.CLIENT)
   async create(
     @CurrentUser() actor: Actor,
@@ -81,6 +84,7 @@ export class BookingsController {
 
   /** Cliente da reserva ou prestador do serviço (verificado no use case). */
   @Patch(':id/cancel')
+  @Throttle(MONEY_THROTTLE)
   async cancel(
     @CurrentUser() actor: Actor,
     @Param('id', UuidParamPipe) id: string,
