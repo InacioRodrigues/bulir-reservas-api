@@ -1,12 +1,7 @@
 import { z } from 'zod';
+import { createUserSchema } from '@modules/users/application/dto/create-user.dto';
 
-export const registerSchema = z.object({
-  email: z.string().email('Endereço de email inválido'),
-  password: z
-    .string()
-    .min(8, 'A palavra-passe deve conter pelo menos 8 caracteres'),
-  name: z.string().min(2, 'O nome deve conter pelo menos 2 caracteres'),
-});
+export const registerSchema = createUserSchema;
 
 export const loginSchema = z.object({
   email: z.string().email('Endereço de email inválido'),

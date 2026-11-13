@@ -1,13 +1,12 @@
 import { User } from '../entities/user.entity';
-import { PaginationParams } from '@common/helpers/paginator';
 
 export interface IUserRepository {
   create(user: User): Promise<User>;
+  /** Persiste apenas campos de perfil (ex.: password). Nunca escreve o saldo. */
   update(user: User): Promise<User>;
   findById(id: string): Promise<User | null>;
   findByEmail(email: string): Promise<User | null>;
-  delete(id: string): Promise<void>;
-  findAll(params: PaginationParams): Promise<{ data: User[]; total: number }>;
+  findByNif(nif: string): Promise<User | null>;
 }
 
 export const USER_REPOSITORY_TOKEN = Symbol('IUserRepository');

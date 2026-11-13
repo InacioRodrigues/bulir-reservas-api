@@ -28,10 +28,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Utilizador não encontrado');
     }
 
-    if (!userDomain.isActive) {
-      throw new UnauthorizedException('A sua conta está inativa');
-    }
-
     // Populate global Request Context details for auditing & tracing
     RequestContext.userId = userDomain.id;
     RequestContext.roles = [userDomain.role];

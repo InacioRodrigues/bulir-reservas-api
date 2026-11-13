@@ -5,8 +5,8 @@ import {
   USER_REPOSITORY_TOKEN,
   IUserRepository,
 } from '../../domain/repositories/user.repository.interface';
-import { User } from '../../domain/entities/user.entity';
-import { UserRole } from '@prisma/client';
+import { User, UserProps } from '../../domain/entities/user.entity';
+import { UserRole } from '../../domain/entities/user-role';
 import { CreateUserDto } from '../dto/create-user.dto';
 
 // ─── Mock Factory ─────────────────────────────────────────────────────────────
@@ -15,20 +15,18 @@ const mockUserRepository = (): jest.Mocked<IUserRepository> => ({
   update: jest.fn(),
   findById: jest.fn(),
   findByEmail: jest.fn(),
-  delete: jest.fn(),
-  findAll: jest.fn(),
+  findByNif: jest.fn(),
 });
 
 // ─── User Builder ─────────────────────────────────────────────────────────────
-const buildUser = (overrides: Partial<User> = {}): User =>
+const buildUser = (overrides: Partial<UserProps> = {}): User =>
   new User({
     id: 'uuid-test-001',
+    fullName: 'Test User',
+    nif: '123456789LA041',
     email: 'test@example.com',
     passwordHash: '$argon2id$hash',
-    name: 'Test User',
-    role: UserRole.USER,
-    isActive: true,
-    isEmailVerified: false,
+    role: UserRole.CLIENT,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     ...overrides,
@@ -64,14 +62,15 @@ describe('CreateUserUseCase', () => {
 
   describe('execute()', () => {
     const dto: CreateUserDto = {
+      fullName: 'New User',
+      nif: '987654321LA042',
       email: 'new@example.com',
       password: 'SecurePassword123',
-      name: 'New User',
-      role: UserRole.USER,
+      role: UserRole.CLIENT,
     };
 
     it('should create and persist a new user', async () => {
-      const savedUser = buildUser({ email: dto.email, name: dto.name });
+      const savedUser = buildUser({ email: dto.email, fullName: dto.fullName });
 
       userRepository.findByEmail.mockResolvedValue(null);
       userRepository.create.mockResolvedValue(savedUser);

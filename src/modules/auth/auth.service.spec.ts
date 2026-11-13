@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { USER_REPOSITORY_TOKEN } from '@modules/users/domain/repositories/user.repository.interface';
 import { User } from '@modules/users/domain/entities/user.entity';
-import { UserRole } from '@prisma/client';
+import { UserRole } from '@modules/users/domain/entities/user-role';
 import { PrismaService } from '@database/prisma.service';
 import { CreateUserUseCase } from '@modules/users/application/use-cases/create-user.use-case';
 import * as argon2 from 'argon2';
@@ -14,12 +14,11 @@ import * as argon2 from 'argon2';
 const buildUser = (overrides: Partial<any> = {}): User =>
   new User({
     id: 'user-uuid-001',
+    fullName: 'Test User',
+    nif: '123456789LA041',
     email: 'user@example.com',
     passwordHash: '',
-    name: 'Test User',
-    role: UserRole.USER,
-    isActive: true,
-    isEmailVerified: true,
+    role: UserRole.CLIENT,
     ...overrides,
   });
 
@@ -33,7 +32,7 @@ describe('AuthService', () => {
     verify: jest.fn().mockReturnValue({
       sub: 'user-uuid-001',
       email: 'user@example.com',
-      role: UserRole.USER,
+      role: UserRole.CLIENT,
     }),
   };
 
@@ -54,10 +53,9 @@ describe('AuthService', () => {
     userRepository = {
       findByEmail: jest.fn(),
       findById: jest.fn(),
+      findByNif: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
-      delete: jest.fn(),
-      findAll: jest.fn(),
     };
 
     prisma = {
@@ -122,16 +120,6 @@ describe('AuthService', () => {
         service.login({ email: 'nobody@example.com', password: 'any' }),
       ).rejects.toThrow(UnauthorizedException);
     });
-
-    it('should throw ForbiddenException for inactive user', async () => {
-      const hash = await argon2.hash('Password@123');
-      const user = buildUser({ passwordHash: hash, isActive: false });
-      userRepository.findByEmail.mockResolvedValue(user);
-
-      await expect(
-        service.login({ email: user.email, password: 'Password@123' }),
-      ).rejects.toThrow(ForbiddenException);
-    });
   });
 
   // ─── Refresh Token ───────────────────────────────────────────────────────────
@@ -163,7 +151,7 @@ describe('AuthService', () => {
         user: {
           id: 'user-uuid-001',
           email: 'user@example.com',
-          role: UserRole.USER,
+          role: UserRole.CLIENT,
         },
       });
 

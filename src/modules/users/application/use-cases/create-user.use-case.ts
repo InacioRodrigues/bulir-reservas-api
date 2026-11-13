@@ -25,9 +25,10 @@ export class CreateUserUseCase {
     const passwordHash = await PasswordHelper.hash(dto.password);
 
     const user = new User({
+      fullName: dto.fullName,
+      nif: dto.nif,
       email: dto.email,
       passwordHash,
-      name: dto.name,
       role: dto.role,
     });
 

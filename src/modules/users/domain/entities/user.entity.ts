@@ -1,18 +1,16 @@
-import { UserRole } from '@prisma/client';
+import { UserRole } from './user-role';
 
 export interface UserProps {
   id?: string;
+  fullName: string;
+  nif: string;
   email: string;
   passwordHash: string;
-  name: string;
-  role?: UserRole;
-  isActive?: boolean;
-  isEmailVerified?: boolean;
+  role: UserRole;
+  /** Decimal com 2 casas, em string (ex.: "1500.00") — nunca float. */
+  balance?: string;
   createdAt?: Date;
   updatedAt?: Date;
-  deletedAt?: Date | null;
-  createdBy?: string | null;
-  updatedBy?: string | null;
 }
 
 export class User {
@@ -20,23 +18,26 @@ export class User {
 
   constructor(props: UserProps) {
     this.props = {
-      id: props.id || '',
+      id: props.id ?? '',
+      fullName: props.fullName,
+      nif: props.nif,
       email: props.email,
       passwordHash: props.passwordHash,
-      name: props.name,
-      role: props.role || UserRole.USER,
-      isActive: props.isActive !== undefined ? props.isActive : true,
-      isEmailVerified: props.isEmailVerified || false,
-      createdAt: props.createdAt || new Date(),
-      updatedAt: props.updatedAt || new Date(),
-      deletedAt: props.deletedAt || null,
-      createdBy: props.createdBy || null,
-      updatedBy: props.updatedBy || null,
+      role: props.role,
+      balance: props.balance ?? '0.00',
+      createdAt: props.createdAt ?? new Date(),
+      updatedAt: props.updatedAt ?? new Date(),
     };
   }
 
   get id(): string {
     return this.props.id;
+  }
+  get fullName(): string {
+    return this.props.fullName;
+  }
+  get nif(): string {
+    return this.props.nif;
   }
   get email(): string {
     return this.props.email;
@@ -44,17 +45,15 @@ export class User {
   get passwordHash(): string {
     return this.props.passwordHash;
   }
-  get name(): string {
-    return this.props.name;
-  }
   get role(): UserRole {
     return this.props.role;
   }
-  get isActive(): boolean {
-    return this.props.isActive;
-  }
-  get isEmailVerified(): boolean {
-    return this.props.isEmailVerified;
+  /**
+   * Saldo lido da BD. É só leitura: o saldo muda apenas através de updates
+   * condicionais e atómicos na carteira/reservas, nunca via `update(user)`.
+   */
+  get balance(): string {
+    return this.props.balance;
   }
   get createdAt(): Date {
     return this.props.createdAt;
@@ -62,37 +61,13 @@ export class User {
   get updatedAt(): Date {
     return this.props.updatedAt;
   }
-  get deletedAt(): Date | null {
-    return this.props.deletedAt;
-  }
-  get createdBy(): string | null {
-    return this.props.createdBy;
-  }
-  get updatedBy(): string | null {
-    return this.props.updatedBy;
+
+  isClient(): boolean {
+    return this.props.role === UserRole.CLIENT;
   }
 
-  updateName(name: string): void {
-    if (!name || name.trim() === '') {
-      throw new Error('Name cannot be empty');
-    }
-    this.props.name = name.trim();
-    this.props.updatedAt = new Date();
-  }
-
-  changeRole(role: UserRole): void {
-    this.props.role = role;
-    this.props.updatedAt = new Date();
-  }
-
-  activate(): void {
-    this.props.isActive = true;
-    this.props.updatedAt = new Date();
-  }
-
-  deactivate(): void {
-    this.props.isActive = false;
-    this.props.updatedAt = new Date();
+  isProvider(): boolean {
+    return this.props.role === UserRole.PROVIDER;
   }
 
   updatePassword(passwordHash: string): void {

@@ -17,7 +17,6 @@ import { User } from '@modules/users/domain/entities/user.entity';
 import { UserMapper } from '@modules/users/infrastructure/prisma/user.mapper';
 import { CreateUserUseCase } from '@modules/users/application/use-cases/create-user.use-case';
 import { PasswordHelper } from '@common/helpers/password';
-import { UserRole } from '@prisma/client';
 import {
   LoginDto,
   RegisterDto,
@@ -38,10 +37,7 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const user = await this.createUserUseCase.execute({
-      ...dto,
-      role: UserRole.USER,
-    });
+    const user = await this.createUserUseCase.execute(dto);
 
     return this.generateTokens(user);
   }
@@ -58,10 +54,6 @@ export class AuthService {
     );
     if (!isPasswordValid) {
       throw new UnauthorizedException('Credenciais inválidas');
-    }
-
-    if (!userDomain.isActive) {
-      throw new ForbiddenException('A sua conta está inativa');
     }
 
     return this.generateTokens(userDomain);

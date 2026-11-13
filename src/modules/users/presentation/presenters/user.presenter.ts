@@ -1,12 +1,14 @@
 import { User } from '../../domain/entities/user.entity';
+import { UserRole } from '../../domain/entities/user-role';
 
+/** Forma pública do utilizador (ver `User` em CONTRATO-API.md). */
 export interface UserResponse {
   id: string;
+  fullName: string;
+  nif: string;
   email: string;
-  name: string;
-  role: string;
-  isActive: boolean;
-  isEmailVerified: boolean;
+  role: UserRole;
+  balance: string;
   createdAt: string;
 }
 
@@ -14,16 +16,12 @@ export class UserPresenter {
   static toResponse(user: User): UserResponse {
     return {
       id: user.id,
+      fullName: user.fullName,
+      nif: user.nif,
       email: user.email,
-      name: user.name,
       role: user.role,
-      isActive: user.isActive,
-      isEmailVerified: user.isEmailVerified,
+      balance: user.balance,
       createdAt: user.createdAt.toISOString(),
     };
-  }
-
-  static toResponseCollection(users: User[]): UserResponse[] {
-    return users.map((user) => this.toResponse(user));
   }
 }

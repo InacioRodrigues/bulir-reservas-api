@@ -3,13 +3,12 @@ import { USER_REPOSITORY_TOKEN } from './domain/repositories/user.repository.int
 import { UserRepository } from './infrastructure/repositories/user.repository';
 import { CreateUserUseCase } from './application/use-cases/create-user.use-case';
 import { GetUserUseCase } from './application/use-cases/get-user.use-case';
-import { UpdateUserUseCase } from './application/use-cases/update-user.use-case';
-import { DeleteUserUseCase } from './application/use-cases/delete-user.use-case';
-import { ListUsersUseCase } from './application/use-cases/list-users.use-case';
-import { UsersController } from './presentation/controllers/users.controller';
 
+/**
+ * Sem controller próprio: o utilizador é criado em `POST /auth/register` e
+ * consultado em `GET /auth/me`. Não há papel ADMIN neste domínio.
+ */
 @Module({
-  controllers: [UsersController],
   providers: [
     {
       provide: USER_REPOSITORY_TOKEN,
@@ -17,16 +16,8 @@ import { UsersController } from './presentation/controllers/users.controller';
     },
     CreateUserUseCase,
     GetUserUseCase,
-    UpdateUserUseCase,
-    DeleteUserUseCase,
-    ListUsersUseCase,
   ],
-  exports: [
-    USER_REPOSITORY_TOKEN,
-    CreateUserUseCase,
-    GetUserUseCase,
-    UpdateUserUseCase,
-  ],
+  exports: [USER_REPOSITORY_TOKEN, CreateUserUseCase, GetUserUseCase],
 })
 export class UsersModule {}
 export { USER_REPOSITORY_TOKEN };
