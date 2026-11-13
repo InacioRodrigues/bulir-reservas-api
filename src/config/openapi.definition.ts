@@ -1,4 +1,6 @@
 import { servicesPaths } from './openapi.services';
+import { walletPaths } from './openapi.wallet';
+import { bookingsPaths } from './openapi.bookings';
 
 export const openApiSpec = {
   openapi: '3.0.3',
@@ -53,6 +55,47 @@ export const openApiSpec = {
           },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      Booking: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          status: { type: 'string', enum: ['CONFIRMED', 'CANCELLED'] },
+          price: {
+            type: 'string',
+            example: '5000.00',
+            description: 'Preço pago (congelado no momento da reserva)',
+          },
+          service: {
+            type: 'object',
+            description: 'Nome congelado no momento da reserva',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              name: { type: 'string' },
+            },
+          },
+          client: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              fullName: { type: 'string' },
+            },
+          },
+          provider: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              fullName: { type: 'string' },
+            },
+          },
+          createdAt: { type: 'string', format: 'date-time' },
+          cancelledAt: { type: 'string', format: 'date-time', nullable: true },
+          cancelledBy: {
+            type: 'string',
+            enum: ['CLIENT', 'PROVIDER'],
+            nullable: true,
+          },
         },
       },
       PageMeta: {
@@ -351,5 +394,7 @@ export const openApiSpec = {
       },
     },
     ...servicesPaths,
+    ...walletPaths,
+    ...bookingsPaths,
   },
 };
