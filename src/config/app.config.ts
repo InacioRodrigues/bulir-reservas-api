@@ -6,6 +6,7 @@ export default registerAs('app', () => ({
   nodeEnv: process.env.NODE_ENV || 'development',
   appUrl: process.env.APP_URL || 'http://localhost:3000',
   apiPrefix: process.env.API_PREFIX || 'api/v1',
+  trustProxy: parseInt(process.env.TRUST_PROXY || '0', 10),
   bodyLimit: process.env.BODY_LIMIT || '16kb',
   corsOrigins: parseCorsOrigins(
     process.env.CORS_ORIGINS || DEFAULT_CORS_ORIGINS,

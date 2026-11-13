@@ -39,6 +39,9 @@ export const envSchema = z.object({
   AUTH_THROTTLE_LIMIT: z.coerce.number().int().positive().default(5),
   // Pedidos/minuto por utilizador em reservas, cancelamentos e carregamentos.
   MONEY_THROTTLE_LIMIT: z.coerce.number().int().positive().default(10),
+  // Nº de proxies à frente da API (0 = ligação direta). Necessário atrás de
+  // um load balancer para que o IP do cliente (e o rate limit) seja o real.
+  TRUST_PROXY: z.coerce.number().int().min(0).default(0),
 
   JWT_ACCESS_SECRET: z.string().min(8),
   JWT_ACCESS_EXPIRATION: z.string().default('15m'),

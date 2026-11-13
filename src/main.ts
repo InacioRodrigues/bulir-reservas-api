@@ -28,6 +28,13 @@ async function bootstrap() {
   const prefix = configService.get<string>('app.apiPrefix', 'api/v1');
   const bodyLimit = configService.get<string>('app.bodyLimit', '16kb');
   const corsOrigins = configService.get<string[]>('app.corsOrigins', []);
+  const trustProxy = configService.get<number>('app.trustProxy', 0);
+
+  // Atrás de um proxy (Render, Railway, nginx) o IP do socket é o do proxy.
+  // Confiar em N saltos faz `req.ip` vir de X-Forwarded-For — sem isto, todos
+  // os clientes partilhariam o mesmo contador de rate limit. Nunca `true`:
+  // um cliente poderia forjar o header e escolher o próprio IP.
+  app.set('trust proxy', trustProxy);
 
   // Set Pino Logger as global NestJS logger
   app.useLogger(app.get(Logger));
