@@ -8,7 +8,7 @@ import {
 } from '@modules/bookings/domain/repositories/booking.repository.interface';
 import { UndoLog } from './fake-unit-of-work';
 
-/** "Tabela" `bookings` + nomes dos utilizadores (o JOIN com `users`). */
+/** "Tabela" `bookings` + nomes dos utilizadores (a relação com `users`). */
 export class InMemoryBookingStore {
   readonly items: Booking[] = [];
   readonly userNames = new Map<string, string>();

@@ -3,8 +3,10 @@ import { Booking } from '../../domain/entities/booking.entity';
 
 /**
  * Colunas lidas em todas as consultas. Os nomes do cliente e do prestador
- * vêm por JOIN na mesma query (sem N+1) e só com campos públicos: nunca
- * carregamos password hash, NIF ou saldo da outra parte.
+ * são carregados em lote — o Prisma faz uma query `WHERE id IN (...)` por
+ * relação para a página inteira, não uma por reserva (sem N+1): uma página
+ * de 100 reservas custa 3 queries, tal como uma de 1. Só campos públicos:
+ * nunca carregamos password hash, NIF ou saldo da outra parte.
  */
 export const bookingSelect = {
   id: true,

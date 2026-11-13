@@ -61,9 +61,8 @@ export class PrismaBookingRepository implements IBookingRepository {
       ...(criteria.status && { status: criteria.status }),
     };
 
-    // Uma query para a página (com os nomes por JOIN no mesmo SELECT — sem
-    // N+1) e outra para o total, em paralelo. Ordem pelo índice
-    // (client_id|provider_id, created_at DESC); `id` desempata.
+    // Página (com os nomes carregados em lote, sem N+1) e total, em paralelo.
+    // Ordem pelo índice (client_id|provider_id, created_at DESC); `id` desempata.
     const [rows, total] = await Promise.all([
       this.db.booking.findMany({
         where,

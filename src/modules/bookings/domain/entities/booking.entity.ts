@@ -5,7 +5,7 @@ import { BookingStatus } from './booking-status';
 export interface BookingProps {
   id?: string;
   clientId: string;
-  /** Preenchido pelo repositório nas leituras (JOIN com `users`). */
+  /** Preenchido pelo repositório nas leituras (relação com `users`). */
   clientName?: string;
   /** Snapshot: o prestador do serviço no momento da reserva. */
   providerId: string;

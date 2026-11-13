@@ -29,7 +29,7 @@ const COMPARATORS: Record<ServiceSort, (a: Service, b: Service) => number> = {
  */
 export class InMemoryServiceRepository implements IServiceRepository {
   readonly items: Service[] = [];
-  /** Nomes dos prestadores (na BD vêm do JOIN com `users`). */
+  /** Nomes dos prestadores (na BD vêm da relação com `users`). */
   readonly providerNames = new Map<string, string>();
   private clock = Date.UTC(2026, 0, 1);
 

@@ -11,8 +11,9 @@ export const serviceSelect = {
   deletedAt: true,
   createdAt: true,
   updatedAt: true,
-  // JOIN numa só query (sem N+1) e só com os campos públicos do prestador:
-  // nunca carregamos password hash, NIF ou saldo de quem publicou.
+  // Carregado em lote (uma query `WHERE id IN (...)` para a página inteira,
+  // sem N+1) e só com os campos públicos do prestador: nunca carregamos
+  // password hash, NIF ou saldo de quem publicou.
   provider: { select: { id: true, fullName: true } },
 } satisfies Prisma.ServiceSelect;
 
