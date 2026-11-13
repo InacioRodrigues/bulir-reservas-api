@@ -5,7 +5,7 @@
 - [x] **Fase 2** — Cadastro e autenticação (NIF/e-mail únicos, login por e-mail ou NIF, JWT, RBAC)
 - [x] **Fase 3** — Serviços (CRUD do prestador, ownership, soft delete, listagem paginada)
 - [x] **Fase 4** — Carteira e reservas (top-up, reserva e cancelamento atómicos, ledger)
-- [ ] **Fase 5** — Histórico (reservas e movimentos de carteira paginados, sem N+1)
+- [x] **Fase 5** — Histórico (reservas e movimentos de carteira paginados, sem N+1)
 - [ ] **Fase 6** — Segurança e desempenho (Helmet, CORS, rate limiting, XSS/CSRF/SQLi, índices)
 - [ ] **Fase 7** — Testes (unit + e2e com Postgres real, teste de concorrência, CI)
 - [ ] **Fase 8** — Docker, documentação e deploy
@@ -55,4 +55,12 @@
 - `npm run test:integration`: concorrência real contra o PostgreSQL (3/10 reservas, 1/10 cancelamentos, 20 top-ups,
   operações cruzadas sem deadlock). Removendo a condição de saldo, o teste falha pelo `CHECK (balance >= 0)`.
 - Helpers OpenAPI partilhados em `src/config/openapi.common.ts`.
+
+## Notas da Fase 5
+
+- `GET /bookings` (filtro pelo papel: cliente → `client_id`, prestador → `provider_id`; `status` opcional),
+  `GET /bookings/:id` (`404` → `403` se não participa) e `GET /wallet/transactions`, todos paginados com a `meta` do contrato.
+- Sem N+1: 3 queries fixas por página de reservas (página + nomes em lote + total), 2 por página de extrato; os planos usam
+  `bookings_client_id_created_at_idx` / `wallet_transactions_user_id_created_at_idx`.
+- Comentários corrigidos: o Prisma carrega relações em lote (`IN (...)`), não por JOIN (`relationJoins` é *preview*).
 

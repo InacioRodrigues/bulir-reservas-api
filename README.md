@@ -111,6 +111,9 @@ Password comum: `Senha@123`. O login aceita e-mail **ou** NIF no campo `identifi
 | `POST /wallet/top-up` | CLIENT | `{ amount }` (string, > 0 e ≤ 1 000 000.00) → `200 { balance }`; carregamento simulado |
 | `POST /bookings` | CLIENT | `{ serviceId }` → `201 Booking` |
 | `PATCH /bookings/:id/cancel` | cliente da reserva ou prestador do serviço | → `200 Booking` com reembolso integral |
+| `GET /bookings?page&perPage&status` | autenticado | histórico em que participa, mais recentes primeiro |
+| `GET /bookings/:id` | cliente ou prestador da reserva | `404` se não existir, `403` se não participar |
+| `GET /wallet/transactions?page&perPage` | autenticado | extrato do próprio (ledger), mais recentes primeiro |
 
 **Reservar** é uma única transação (tudo ou nada):
 
@@ -190,6 +193,24 @@ Em produção é `PrismaUnitOfWork` (`prisma.$transaction`); nos testes unitári
 10 reservas em paralelo com saldo para 3 → exatamente 3 sucessos e saldo 0.00; 10 cancelamentos em paralelo → 1 sucesso
 e um só reembolso; 20 carregamentos em paralelo → nenhum perdido; operações cruzadas entre vários clientes e prestadores →
 sem deadlocks, sem saldos negativos, `SUM(ledger) = saldo` para todos e o total de dinheiro conservado.
+
+### Histórico
+
+- **Todas as reservas ficam guardadas**, incluindo canceladas e as de serviços já eliminados (soft delete + FKs `RESTRICT`).
+  Cada uma mostra serviço, cliente, prestador e o **valor pago** — o nome e o preço vêm do snapshot, por isso editar
+  o serviço depois não reescreve o histórico.
+- **`GET /bookings` só mostra reservas em que o utilizador participa:** um cliente vê as que fez, um prestador as dos
+  seus serviços. O filtro vem do token (papel + id), nunca da query. Filtro opcional `status=CONFIRMED|CANCELLED`.
+- **`GET /bookings/:id`:** `404` se não existir, `403` para quem não é cliente nem prestador dessa reserva
+  (igual ao cancelamento). Os ids são UUID aleatórios, por isso o `403` não ajuda a enumerar reservas.
+- **`GET /wallet/transactions`:** extrato do ledger do próprio utilizador — `amount` com sinal e `balanceAfter`,
+  com o `bookingId` quando o movimento vem de uma reserva.
+- **Sem N+1 e com índices:** cada lista faz um número fixo de queries, seja qual for o tamanho da página — a página,
+  os nomes de cliente/prestador carregados em lote (`WHERE id IN (...)`, uma query por relação) e o total, em paralelo.
+  Os filtros seguem exatamente os índices do modelo de dados: `bookings (client_id, created_at DESC)` /
+  `(provider_id, created_at DESC)` e `wallet_transactions (user_id, created_at DESC)` — o `ORDER BY created_at DESC`
+  sai do próprio índice, sem ordenação em memória. `id` desempata para a paginação ser estável.
+  `select` explícito: nunca se leem password hash, NIF ou saldo da outra parte.
 
 ## Modelo de dados
 
