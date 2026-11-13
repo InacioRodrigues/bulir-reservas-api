@@ -3,12 +3,16 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { NextFunction, Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
-import helmet from 'helmet';
 import compression from 'compression';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import { openApiSpec } from './config/openapi.definition';
 import { AppModule } from './app.module';
 import { buildCorsOptions } from './config/cors.config';
+import {
+  DOCS_PATH,
+  SCALAR_CDN,
+  securityHeaders,
+} from './config/security-headers';
 import { assignRequestIds } from './common/http/request-ids';
 
 async function bootstrap() {
@@ -27,12 +31,8 @@ async function bootstrap() {
   // Set Pino Logger as global NestJS logger
   app.useLogger(app.get(Logger));
 
-  // Security Middlewares
-  app.use(
-    helmet({
-      contentSecurityPolicy: false, // Turn off CSP for Scalar reference page styling
-    }),
-  );
+  // Helmet: CSP estrita para a API e CSP com nonce para a documentação.
+  app.use(securityHeaders());
 
   // Ids do pedido antes do parser: erros de corpo também levam correlationId.
   app.use((req: Request, res: Response, next: NextFunction) => {
@@ -40,14 +40,14 @@ async function bootstrap() {
     next();
   });
 
+  // CORS antes do parser: até um 413 tem de ser legível pela app web.
+  app.enableCors(buildCorsOptions(corsOrigins));
+  app.use(compression());
+
   // A API só aceita JSON. Limite pequeno: o maior corpo legítimo (um serviço
   // com descrição de 1000 caracteres) tem poucos KB; acima disso → 413.
   // Sem parser de urlencoded/multipart: menos superfície de ataque.
   app.useBodyParser('json', { limit: bodyLimit });
-  app.use(compression());
-
-  // CORS
-  app.enableCors(buildCorsOptions(corsOrigins));
 
   // Global Prefix
   app.setGlobalPrefix(prefix);
@@ -55,15 +55,15 @@ async function bootstrap() {
   // Enable Graceful Shutdown hooks
   app.enableShutdownHooks();
 
-  // Mount Scalar API documentation
-  app.use(
-    '/reference',
+  // Documentação interativa (Scalar). Renderizada por pedido para incluir o
+  // nonce da CSP gerado em `securityHeaders()`.
+  app.use(DOCS_PATH, (req: Request, res: Response) => {
     apiReference({
-      spec: {
-        content: openApiSpec,
-      },
-    }),
-  );
+      content: openApiSpec,
+      cdn: SCALAR_CDN,
+      nonce: res.locals.cspNonce as string,
+    })(req, res);
+  });
 
   await app.listen(port);
 
@@ -72,7 +72,9 @@ async function bootstrap() {
   logger.log(
     `🚀 Application is running on: http://localhost:${port}/${prefix}`,
   );
-  logger.log(`📄 Scalar API Documentation: http://localhost:${port}/reference`);
+  logger.log(
+    `📄 Scalar API Documentation: http://localhost:${port}${DOCS_PATH}`,
+  );
 }
 
 bootstrap().catch((err) => {
