@@ -1,32 +1,7 @@
 /** Rotas `/services` da especificação OpenAPI (ver `openapi.definition.ts`). */
+import { errorContent, pageParams, uuidPathParam } from './openapi.common';
 
-const errorContent = (example: Record<string, unknown>) => ({
-  'application/json': {
-    schema: { $ref: '#/components/schemas/Error' },
-    example: { success: false, ...example },
-  },
-});
-
-const idParam = {
-  name: 'id',
-  in: 'path',
-  required: true,
-  description: 'UUID do serviço (outro formato → 400 `VALIDATION_ERROR`)',
-  schema: { type: 'string', format: 'uuid' },
-};
-
-const pageParams = [
-  {
-    name: 'page',
-    in: 'query',
-    schema: { type: 'integer', minimum: 1, maximum: 10000, default: 1 },
-  },
-  {
-    name: 'perPage',
-    in: 'query',
-    schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
-  },
-];
+const idParam = uuidPathParam('UUID do serviço');
 
 const serviceExample = {
   id: '6ae57059-13c9-4f3e-97bd-63ab09e7d40a',
