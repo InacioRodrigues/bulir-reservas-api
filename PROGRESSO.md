@@ -3,7 +3,7 @@
 - [x] **Fase 0** — Setup do projeto (NestJS + Prisma + Docker, build/lint/testes verdes, repo público)
 - [x] **Fase 1** — Modelo de dados (User, Service, Booking, WalletTransaction, RefreshToken, CHECKs, seed)
 - [x] **Fase 2** — Cadastro e autenticação (NIF/e-mail únicos, login por e-mail ou NIF, JWT, RBAC)
-- [ ] **Fase 3** — Serviços (CRUD do prestador, ownership, soft delete, listagem paginada)
+- [x] **Fase 3** — Serviços (CRUD do prestador, ownership, soft delete, listagem paginada)
 - [ ] **Fase 4** — Carteira e reservas (top-up, reserva e cancelamento atómicos, ledger)
 - [ ] **Fase 5** — Histórico (reservas e movimentos de carteira paginados, sem N+1)
 - [ ] **Fase 6** — Segurança e desempenho (Helmet, CORS, rate limiting, XSS/CSRF/SQLi, índices)
@@ -33,3 +33,13 @@
 - Rate limiting: global 100/min; `login`/`register` 5/min (`AUTH_THROTTLE_LIMIT`); `refresh` 20/min.
 - Removido `PATCH /auth/change-password` (fora do contrato).
 - O type-check completo (`npm run build`) demora ~2 min nesta máquina por causa dos tipos do Prisma.
+
+## Notas da Fase 3
+
+- Módulo `services` com use cases (`create`, `get`, `update`, `delete`, `list`, `list-provider`) e `ServicePolicy`
+  (papel + dono) — testes unitários com `test/fakes/in-memory-service.repository.ts`.
+- Value object `Money` (`src/common/domain/money.ts`, cêntimos em `bigint`) — reutilizado na carteira/reservas.
+- Paginação no formato do contrato (`src/common/pagination`) e `UuidParamPipe` para `:id`.
+- Preço só como string decimal (número JSON → `400`). `sort` ∈ `newest|oldest|price_asc|price_desc|name_asc`.
+- Corrigido no teste manual: o `contains` do Prisma não escapa `%`/`_` — escapados em `escapeLikePattern`.
+- `ServicesModule` exporta `SERVICE_REPOSITORY` para as reservas lerem serviços ativos.

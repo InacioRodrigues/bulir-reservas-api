@@ -71,6 +71,39 @@ Password comum: `Senha@123`. O login aceita e-mail **ou** NIF no campo `identifi
 - **E-mail/NIF únicos em duas camadas:** verificação prévia (mensagem clara) + `UNIQUE` da BD. Dois registos iguais em
   simultâneo passam ambos a verificação, mas só um `INSERT` vence; o erro `P2002` do outro é traduzido para o mesmo `409`.
 
+## Serviços
+
+| Rota | Quem | Notas |
+|------|------|-------|
+| `GET /services?page&perPage&search&minPrice&maxPrice&sort` | autenticado | catálogo de serviços ativos, paginado |
+| `GET /services/mine?page&perPage` | PROVIDER | serviços ativos do próprio prestador |
+| `GET /services/:id` | autenticado | `404` se não existir ou estiver eliminado |
+| `POST /services` | PROVIDER | `{ name, description, price }` → `201` |
+| `PATCH /services/:id` | PROVIDER dono | alteração parcial → `200` |
+| `DELETE /services/:id` | PROVIDER dono | soft delete → `204` |
+
+- **Permissões nos use cases, não no controller.** `@Roles('PROVIDER')` trava cedo quem nunca poderia passar;
+  a regra "só o dono altera/elimina" precisa de ler o serviço e vive em `ServicePolicy`, chamada pelos use cases
+  (que recebem o utilizador autenticado como `Actor`). Ordem: papel (`403`) → existe (`404`) → é dono (`403`).
+- **O prestador associado é sempre o utilizador autenticado.** O corpo passa por zod, que descarta campos
+  desconhecidos: enviar `providerId` ou `deletedAt` não tem efeito (sem *mass assignment*).
+- **Preço como string decimal** (`"1500"`, `"1500.5"`, `"1500.50"`), > 0 e ≤ 10 000 000.00, no máximo 2 casas;
+  devolvido sempre com 2 casas. Um número JSON é rejeitado (`400`): quando chega ao servidor já passou por float.
+  As contas e comparações usam o value object `Money` (cêntimos em `bigint`), nunca `number`.
+- **Soft delete:** `DELETE` preenche `deleted_at`. O serviço sai do catálogo, do detalhe e de "os meus serviços"
+  e deixa de poder ser reservado, mas a linha fica — as reservas antigas apontam para ela (`ON DELETE RESTRICT`)
+  e guardam o nome e o preço do momento. Editar um serviço também não altera reservas já feitas.
+- **Concorrência:** o `UPDATE` de edição e de eliminação inclui `deleted_at IS NULL` no `WHERE`. Dois `DELETE`
+  simultâneos → um `204` e um `404`; editar um serviço que acabou de ser eliminado → `404` (não o "ressuscita").
+- **Pesquisa** (`search`, ≤ 100 caracteres) no nome e na descrição, sem distinguir maiúsculas (`ILIKE`, parametrizado).
+  `%` e `_` são escapados para serem procurados como texto e não como curingas.
+- **Filtros e ordenação:** `minPrice`/`maxPrice` inclusivos (`maxPrice ≥ minPrice`, senão `400`);
+  `sort` ∈ `newest` (omissão), `oldest`, `price_asc`, `price_desc`, `name_asc`. Cada ordenação desempata por `id`,
+  para a paginação ser estável (nenhum item repetido ou perdido entre páginas).
+- **Paginação:** `page` ≥ 1 (≤ 10 000), `perPage` 1–100 (omissão 20); valores fora dos limites dão `400`.
+  Página e total são lidos num só round-trip; `meta = { page, perPage, total, totalPages }`.
+- **`:id` validado como UUID** antes de chegar à BD (`400 VALIDATION_ERROR` em vez de um erro de tipo do Postgres).
+
 ## Modelo de dados
 
 ```
@@ -119,12 +152,15 @@ users ──< refresh_tokens
   e o reembolso usa o preço efetivamente pago.
 - **Serviços com soft delete e FKs `ON DELETE RESTRICT`:** o histórico nunca desaparece em cascata.
 - **UUID nativo (`@db.Uuid`)**: 16 bytes em vez de ~36 de texto, índices mais pequenos. Implica validar `:id` como UUID
-  na entrada (um texto qualquer daria erro de tipo no Postgres) — feito nas fases seguintes.
+  na entrada (um texto qualquer daria erro de tipo no Postgres) — feito com `UuidParamPipe`.
 - **NIF: 9 a 14 letras ou dígitos.** Cobre o NIF de pessoa singular (nº do BI, ex. `004512345LA041`) e de pessoa
   coletiva (10 dígitos). Não validamos o dígito de controlo. Ser só alfanumérico garante que nunca contém `@`, o que torna
   o login por e-mail **ou** NIF inequívoco.
 - **Normalização** (e-mail `trim` + minúsculas; NIF sem espaços + maiúsculas) aplicada no registo e no login, e reforçada
   por `CHECK` na BD.
+- **Catálogo só para utilizadores autenticados**, como no contrato (o enunciado exige autenticação para aceder à API).
+- **Ordem `404` antes de `403`** ao editar/eliminar: um id inexistente dá `404` a qualquer prestador; um serviço
+  de outro prestador dá `403`. Não esconde nada, porque o catálogo já é visível a todos os utilizadores autenticados.
 - **Só dois papéis, `CLIENT` e `PROVIDER`:** são os únicos que o enunciado define; não há gestão de utilizadores por terceiros.
 
 ## Scripts úteis
