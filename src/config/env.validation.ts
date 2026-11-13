@@ -49,6 +49,10 @@ export const envSchema = z.object({
   JWT_REFRESH_EXPIRATION: z.string().default('7d'),
 
   DATABASE_URL: z.string().url(),
+  // Máximo de ligações no pool desta instância da API.
+  DB_POOL_MAX: z.coerce.number().int().positive().default(10),
+  // Tempo máximo de uma query (ms) antes de o Postgres a cancelar.
+  DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
 
   // Nível de log do pino (por omissão: info em produção, debug fora dela).
   LOG_LEVEL: z
