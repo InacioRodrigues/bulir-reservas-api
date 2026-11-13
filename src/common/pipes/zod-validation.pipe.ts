@@ -23,7 +23,7 @@ export class ZodValidationPipe implements PipeTransform {
           field: err.path.join('.'),
           message: err.message,
         }));
-      throw new ValidationException(errors, 'Validation failed');
+      throw new ValidationException(errors);
     }
 
     return result.data;

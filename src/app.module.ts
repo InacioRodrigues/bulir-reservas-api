@@ -52,20 +52,22 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
     HealthModule,
   ],
   providers: [
-    // Global Guard for authentication
+    // Guards globais, executados por esta ordem:
+    // 1. rate limiting primeiro, para travar abuso antes de qualquer trabalho
+    //    (inclui pedidos com tokens inválidos);
+    // 2. autenticação JWT (exceto rotas @Public());
+    // 3. papéis (@Roles()).
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
-    // Global Guard for Role-Based Access Control
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
-    },
-    // Global Throttler guard
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
     },
     // Global Success response wrapper
     {
