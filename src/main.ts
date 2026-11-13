@@ -5,7 +5,6 @@ import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
 import compression from 'compression';
-import cookieParser from 'cookie-parser';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import { openApiSpec } from './config/openapi.definition';
 import { AppModule } from './app.module';
@@ -35,7 +34,6 @@ async function bootstrap() {
       contentSecurityPolicy: false, // Turn off CSP for Scalar reference page styling
     }),
   );
-  app.use(cookieParser());
 
   // Ids do pedido antes do parser: erros de corpo também levam correlationId.
   app.use((req: Request, res: Response, next: NextFunction) => {
