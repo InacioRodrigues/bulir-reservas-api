@@ -21,9 +21,12 @@ export class PrismaService
 
     super({
       adapter,
+      // Mensagens de erro sem o excerto da invocação: o formato por omissão
+      // pode incluir os argumentos da query (ex.: o hash da password) e essa
+      // mensagem acaba nos logs através do filtro de exceções.
+      errorFormat: 'minimal',
+      // Sem log de queries nem de `info`: ruído e custo em cada pedido.
       log: [
-        { emit: 'event', level: 'query' },
-        { emit: 'stdout', level: 'info' },
         { emit: 'stdout', level: 'warn' },
         { emit: 'stdout', level: 'error' },
       ],

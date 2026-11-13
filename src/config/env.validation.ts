@@ -49,6 +49,11 @@ export const envSchema = z.object({
   JWT_REFRESH_EXPIRATION: z.string().default('7d'),
 
   DATABASE_URL: z.string().url(),
+
+  // Nível de log do pino (por omissão: info em produção, debug fora dela).
+  LOG_LEVEL: z
+    .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
+    .optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
