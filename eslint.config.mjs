@@ -44,6 +44,17 @@ export default tseslint.config(
         },
       ],
       'prettier/prettier': ['error', { endOfLine: 'auto' }],
+      // SQL Injection: só queries parametrizadas. `$queryRaw` com template
+      // literal envia os valores como parâmetros; as variantes *Unsafe
+      // concatenam texto na query e ficam proibidas.
+      'no-restricted-properties': [
+        'error',
+        ...['$queryRawUnsafe', '$executeRawUnsafe'].map((property) => ({
+          property,
+          message:
+            'Usar $queryRaw/$executeRaw com template literal (parametrizado) ou a API do Prisma.',
+        })),
+      ],
     },
   },
 );
