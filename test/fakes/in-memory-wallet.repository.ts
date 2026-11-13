@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { Money } from '@common/domain/money';
+import {
+  Page,
+  PaginationQuery,
+  pageOffset,
+} from '@common/pagination/pagination';
 import { WalletTransaction } from '@modules/wallet/domain/entities/wallet-transaction.entity';
 import {
   IWalletRepository,
@@ -102,5 +107,27 @@ export class InMemoryWalletRepository implements IWalletRepository {
       ledger.splice(ledger.indexOf(transaction), 1);
     });
     return Promise.resolve({ ...transaction });
+  }
+
+  findTransactions(
+    userId: string,
+    query: PaginationQuery,
+  ): Promise<Page<WalletTransaction>> {
+    // Mais recentes primeiro; a ordem de inserção desempata (datas iguais).
+    const mine = this.entriesOf(userId)
+      .map((t, index) => ({ t, index }))
+      .sort(
+        (a, b) =>
+          b.t.createdAt.getTime() - a.t.createdAt.getTime() ||
+          b.index - a.index,
+      )
+      .map(({ t }) => ({ ...t }));
+    const offset = pageOffset(query);
+    return Promise.resolve({
+      items: mine.slice(offset, offset + query.perPage),
+      total: mine.length,
+      page: query.page,
+      perPage: query.perPage,
+    });
   }
 }

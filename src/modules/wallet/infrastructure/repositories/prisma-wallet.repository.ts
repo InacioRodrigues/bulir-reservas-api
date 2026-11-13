@@ -1,3 +1,8 @@
+import {
+  Page,
+  PaginationQuery,
+  pageOffset,
+} from '@common/pagination/pagination';
 import { PrismaDb } from '@database/prisma-unit-of-work';
 import { WalletTransaction } from '../../domain/entities/wallet-transaction.entity';
 import {
@@ -57,5 +62,32 @@ export class PrismaWalletRepository implements IWalletRepository {
       select: walletTransactionSelect,
     });
     return WalletTransactionMapper.toDomain(saved);
+  }
+
+  async findTransactions(
+    userId: string,
+    query: PaginationQuery,
+  ): Promise<Page<WalletTransaction>> {
+    // `WHERE user_id = ? ORDER BY created_at DESC` usa o índice
+    // (user_id, created_at DESC); `id` desempata para a paginação ser estável.
+    // Página e total em paralelo (duas ligações do pool, um só tempo de espera).
+    const where = { userId };
+    const [rows, total] = await Promise.all([
+      this.db.walletTransaction.findMany({
+        where,
+        select: walletTransactionSelect,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: pageOffset(query),
+        take: query.perPage,
+      }),
+      this.db.walletTransaction.count({ where }),
+    ]);
+
+    return {
+      items: rows.map((row) => WalletTransactionMapper.toDomain(row)),
+      total,
+      page: query.page,
+      perPage: query.perPage,
+    };
   }
 }

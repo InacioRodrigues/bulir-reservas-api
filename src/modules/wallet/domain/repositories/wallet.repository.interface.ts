@@ -1,4 +1,5 @@
 import { Money } from '@common/domain/money';
+import { Page, PaginationQuery } from '@common/pagination/pagination';
 import {
   WalletTransaction,
   WalletTransactionType,
@@ -28,6 +29,12 @@ export interface IWalletRepository {
    * insuficiente ou conta inexistente) — nesse caso nada foi escrito.
    */
   applyMovement(movement: WalletMovement): Promise<WalletTransaction | null>;
+
+  /** Extrato do utilizador, mais recentes primeiro. */
+  findTransactions(
+    userId: string,
+    query: PaginationQuery,
+  ): Promise<Page<WalletTransaction>>;
 }
 
 export const WALLET_REPOSITORY = Symbol('IWalletRepository');

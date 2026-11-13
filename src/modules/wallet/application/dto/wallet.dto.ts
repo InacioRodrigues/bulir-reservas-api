@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Money } from '@common/domain/money';
+import { paginationQuerySchema } from '@common/pagination/pagination';
 import { isTopUpInRange, WALLET_RULES } from '../../domain/wallet-rules';
 
 const MONEY_FORMAT_MESSAGE =
@@ -22,3 +23,9 @@ export const topUpSchema = z.object({
 });
 
 export type TopUpDto = z.infer<typeof topUpSchema>;
+
+export const walletTransactionsQuerySchema = paginationQuerySchema;
+
+export type WalletTransactionsQueryDto = z.infer<
+  typeof walletTransactionsQuerySchema
+>;

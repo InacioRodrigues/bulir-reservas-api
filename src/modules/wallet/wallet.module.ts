@@ -8,6 +8,7 @@ import {
 } from './domain/ports/wallet-unit-of-work';
 import { PrismaWalletRepository } from './infrastructure/repositories/prisma-wallet.repository';
 import { TopUpWalletUseCase } from './application/use-cases/top-up-wallet.use-case';
+import { ListWalletTransactionsUseCase } from './application/use-cases/list-wallet-transactions.use-case';
 import { WalletController } from './presentation/controllers/wallet.controller';
 
 @Module({
@@ -29,6 +30,7 @@ import { WalletController } from './presentation/controllers/wallet.controller';
         })),
     },
     TopUpWalletUseCase,
+    ListWalletTransactionsUseCase,
   ],
   exports: [WALLET_REPOSITORY],
 })
