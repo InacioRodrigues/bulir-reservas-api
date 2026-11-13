@@ -92,8 +92,8 @@ export const listServicesQuerySchema = paginationQuerySchema
       .string({ error: 'search deve ser um texto' })
       .trim()
       .max(100, 'search deve ter no máximo 100 caracteres')
-      .optional()
-      .transform((value) => value || undefined),
+      .transform((value) => value || undefined)
+      .optional(),
     minPrice: priceFilterSchema,
     maxPrice: priceFilterSchema,
     sort: z

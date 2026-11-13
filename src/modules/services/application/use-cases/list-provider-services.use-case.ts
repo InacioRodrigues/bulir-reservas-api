@@ -17,10 +17,13 @@ export class ListProviderServicesUseCase {
     private readonly services: IServiceRepository,
   ) {}
 
-  execute(actor: Actor, query: MyServicesQueryDto): Promise<Page<Service>> {
+  async execute(
+    actor: Actor,
+    query: MyServicesQueryDto,
+  ): Promise<Page<Service>> {
     ServicePolicy.assertIsProvider(actor);
 
-    return this.services.search({
+    return await this.services.search({
       ...query,
       sort: 'newest',
       providerId: actor.id,
