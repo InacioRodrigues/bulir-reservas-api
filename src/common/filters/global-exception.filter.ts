@@ -38,9 +38,9 @@ const DEFAULT_MESSAGES: Record<number, string> = {
 
 /**
  * Erros do parser do corpo (Express/`body-parser`) não são `HttpException`:
- * são objetos `http-errors` com `status` e `expose: true` (ex.: JSON
- * malformado → 400, corpo acima do limite → 413). Sem este tratamento
- * chegariam ao cliente como 500.
+ * são objetos `http-errors` com `status` e `expose: true` (ex.: corpo acima
+ * do limite → 413). Sem este tratamento chegariam ao cliente como 500.
+ * (O JSON malformado já chega como `BadRequestException`: o Nest converte-o.)
  */
 function clientHttpErrorStatus(exception: unknown): number | undefined {
   if (typeof exception !== 'object' || exception === null) return undefined;
@@ -88,10 +88,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     } else if (clientStatus !== undefined) {
       status = clientStatus;
       code = DEFAULT_CODES[status] ?? 'BAD_REQUEST';
-      message =
-        (exception as { type?: string }).type === 'entity.parse.failed'
-          ? 'O corpo do pedido não é JSON válido'
-          : (DEFAULT_MESSAGES[status] ?? DEFAULT_MESSAGES[400]);
+      message = DEFAULT_MESSAGES[status] ?? DEFAULT_MESSAGES[400];
     } else if (exception instanceof Error) {
       // Erro não previsto (ex.: falha da BD). A mensagem original nunca vai
       // para o cliente: pode expor SQL, nomes de tabelas ou dados.

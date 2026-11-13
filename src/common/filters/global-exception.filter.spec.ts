@@ -36,11 +36,10 @@ describe('GlobalExceptionFilter', () => {
     expect(body.code).toBe('PAYLOAD_TOO_LARGE');
   });
 
-  it('JSON malformado → 400 BAD_REQUEST sem ecoar o erro do parser', () => {
-    const { status, body } = run(bodyParserError(400, 'entity.parse.failed'));
-    expect(status).toBe(400);
-    expect(body.code).toBe('BAD_REQUEST');
-    expect(body.message).toBe('O corpo do pedido não é JSON válido');
+  it('outros erros 4xx do parser seguem o formato do contrato', () => {
+    const { status, body } = run(bodyParserError(415, 'encoding.unsupported'));
+    expect(status).toBe(415);
+    expect(body.code).toBe('UNSUPPORTED_MEDIA_TYPE');
   });
 
   it('erro inesperado → 500 sem expor a mensagem interna', () => {

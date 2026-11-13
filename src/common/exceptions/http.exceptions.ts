@@ -41,6 +41,14 @@ export class NotFoundException extends BaseException {
   }
 }
 
+export class UnsupportedMediaTypeException extends BaseException {
+  constructor(
+    message = 'O corpo do pedido tem de ser JSON (Content-Type: application/json)',
+  ) {
+    super(message, HttpStatus.UNSUPPORTED_MEDIA_TYPE, 'UNSUPPORTED_MEDIA_TYPE');
+  }
+}
+
 export class InternalServerException extends BaseException {
   constructor(
     message = 'Ocorreu um erro inesperado',

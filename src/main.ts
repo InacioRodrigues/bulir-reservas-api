@@ -14,6 +14,7 @@ import {
   securityHeaders,
 } from './config/security-headers';
 import { assignRequestIds } from './common/http/request-ids';
+import { requireJsonBody } from './common/http/require-json-body';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -48,6 +49,7 @@ async function bootstrap() {
   // com descrição de 1000 caracteres) tem poucos KB; acima disso → 413.
   // Sem parser de urlencoded/multipart: menos superfície de ataque.
   app.useBodyParser('json', { limit: bodyLimit });
+  app.use(requireJsonBody);
 
   // Global Prefix
   app.setGlobalPrefix(prefix);
