@@ -4,7 +4,7 @@
 - [x] **Fase 1** — Modelo de dados (User, Service, Booking, WalletTransaction, RefreshToken, CHECKs, seed)
 - [x] **Fase 2** — Cadastro e autenticação (NIF/e-mail únicos, login por e-mail ou NIF, JWT, RBAC)
 - [x] **Fase 3** — Serviços (CRUD do prestador, ownership, soft delete, listagem paginada)
-- [ ] **Fase 4** — Carteira e reservas (top-up, reserva e cancelamento atómicos, ledger)
+- [x] **Fase 4** — Carteira e reservas (top-up, reserva e cancelamento atómicos, ledger)
 - [ ] **Fase 5** — Histórico (reservas e movimentos de carteira paginados, sem N+1)
 - [ ] **Fase 6** — Segurança e desempenho (Helmet, CORS, rate limiting, XSS/CSRF/SQLi, índices)
 - [ ] **Fase 7** — Testes (unit + e2e com Postgres real, teste de concorrência, CI)
@@ -43,3 +43,16 @@
 - Preço só como string decimal (número JSON → `400`). `sort` ∈ `newest|oldest|price_asc|price_desc|name_asc`.
 - Corrigido no teste manual: o `contains` do Prisma não escapa `%`/`_` — escapados em `escapeLikePattern`.
 - `ServicesModule` exporta `SERVICE_REPOSITORY` para as reservas lerem serviços ativos.
+
+## Notas da Fase 4
+
+- Módulos `wallet` (top-up, movimentos de saldo + ledger) e `bookings` (reservar, cancelar), com use cases sobre portas.
+- Porta `IUnitOfWork` (`src/common/domain/unit-of-work.ts`): o use case recebe os repositórios ligados à transação;
+  `PrismaUnitOfWork` usa `prisma.$transaction` (READ COMMITTED explícito); `FakeUnitOfWork` faz rollback em memória.
+- Débito condicional com `updateManyAndReturn` (`WHERE balance >= x`, `RETURNING balance` → `balanceAfter`);
+  movimentos aplicados por ordem crescente de `userId` (`applyMovementsInLockOrder`) para evitar deadlocks.
+- Cancelamento com `UPDATE ... WHERE status = 'CONFIRMED'`; reembolso do preço snapshot; `PROVIDER_INSUFFICIENT_BALANCE` como defesa.
+- `npm run test:integration`: concorrência real contra o PostgreSQL (3/10 reservas, 1/10 cancelamentos, 20 top-ups,
+  operações cruzadas sem deadlock). Removendo a condição de saldo, o teste falha pelo `CHECK (balance >= 0)`.
+- Helpers OpenAPI partilhados em `src/config/openapi.common.ts`.
+

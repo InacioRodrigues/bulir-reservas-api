@@ -104,6 +104,93 @@ Password comum: `Senha@123`. O login aceita e-mail **ou** NIF no campo `identifi
   Página e total são lidos num só round-trip; `meta = { page, perPage, total, totalPages }`.
 - **`:id` validado como UUID** antes de chegar à BD (`400 VALIDATION_ERROR` em vez de um erro de tipo do Postgres).
 
+## Carteira e reservas
+
+| Rota | Quem | Notas |
+|------|------|-------|
+| `POST /wallet/top-up` | CLIENT | `{ amount }` (string, > 0 e ≤ 1 000 000.00) → `200 { balance }`; carregamento simulado |
+| `POST /bookings` | CLIENT | `{ serviceId }` → `201 Booking` |
+| `PATCH /bookings/:id/cancel` | cliente da reserva ou prestador do serviço | → `200 Booking` com reembolso integral |
+
+**Reservar** é uma única transação (tudo ou nada):
+
+1. `INSERT` da reserva com *snapshot* do serviço (nome, preço, prestador);
+2. débito condicional do cliente — `UPDATE users SET balance = balance - preço WHERE id = $cliente AND balance >= preço RETURNING balance`;
+   0 linhas afetadas → `409 INSUFFICIENT_BALANCE` e **rollback** (a reserva do passo 1 desaparece);
+3. crédito do prestador — `UPDATE users SET balance = balance + preço WHERE id = $prestador RETURNING balance`;
+4. dois movimentos no ledger (`BOOKING_DEBIT` −preço, `BOOKING_CREDIT` +preço) com o `balance_after` devolvido pelo `RETURNING`.
+
+**Cancelar** é outra transação única:
+
+1. `UPDATE bookings SET status = 'CANCELLED', cancelled_at, cancelled_by_id WHERE id = $id AND status = 'CONFIRMED'` —
+   0 linhas → `409 BOOKING_ALREADY_CANCELLED`;
+2. débito condicional do prestador (`WHERE balance >= preço`) — se falhar, `409 PROVIDER_INSUFFICIENT_BALANCE` e rollback
+   (a reserva volta a `CONFIRMED`);
+3. crédito do cliente com o **preço pago** (snapshot), não o preço atual do serviço;
+4. `REFUND_DEBIT` / `REFUND_CREDIT` no ledger. O `UNIQUE (booking_id, type)` torna fisicamente impossível um segundo reembolso.
+
+Permissões (nos use cases, via `BookingPolicy`): só `CLIENT` reserva (`403`); serviço inexistente ou eliminado → `404`;
+cancelar: reserva inexistente → `404`, quem não é o cliente nem o prestador → `403`, já cancelada → `409`.
+O corpo só aceita `serviceId` — `price`, `clientId` ou `status` enviados pelo cliente são descartados.
+
+### Porque é seguro sob concorrência
+
+O erro clássico é **verificar e depois agir** (*check-then-act*): ler o saldo, comparar no código e gravar o novo valor.
+Dois pedidos leem `5000`, ambos acham que chega, ambos gravam `0` — o cliente pagou uma reserva e recebeu duas
+(*lost update*). Aqui a verificação e a escrita são **a mesma instrução SQL**, e o PostgreSQL serializa-as com o lock da linha:
+
+```
+Cliente com saldo 5000.00; serviço de 5000.00; dois pedidos em paralelo (READ COMMITTED)
+
+  Pedido A (tx A)                              Pedido B (tx B)
+  ───────────────────────────────────────────  ───────────────────────────────────────────
+  BEGIN                                        BEGIN
+  INSERT booking A                             INSERT booking B
+  UPDATE users SET balance = balance - 5000
+   WHERE id = C AND balance >= 5000
+   → lock da linha C; 5000 >= 5000 → verdadeiro
+   → 1 linha, RETURNING 0.00
+                                               UPDATE users SET balance = balance - 5000
+                                                WHERE id = C AND balance >= 5000
+                                                → linha C bloqueada por A: ESPERA
+  UPDATE prestador (+5000)
+  INSERT ledger (−5000, +5000)
+  COMMIT  → liberta o lock
+                                                → acorda; o PostgreSQL REAVALIA o WHERE
+                                                  sobre a versão confirmada: 0 >= 5000 → falso
+                                                → 0 linhas afetadas
+                                               throw INSUFFICIENT_BALANCE → ROLLBACK
+                                                (booking B nunca existiu)
+
+  Resultado: 1 reserva, saldo 0.00, ledger coerente. Nunca −5000.00.
+```
+
+- **Atomicidade:** reserva, dois saldos e dois movimentos de ledger estão na mesma transação — não existe estado
+  intermédio visível nem "dinheiro em trânsito" se o processo morrer a meio.
+- **Sem lost update:** `balance = balance ± x` é calculado pela BD sobre o valor atual da linha, nunca sobre um valor lido antes.
+- **READ COMMITTED chega:** quando o `UPDATE` espera por um lock, o PostgreSQL volta a avaliar o `WHERE` sobre a versão
+  confirmada da linha. SERIALIZABLE obrigaria a repetir transações abortadas por conflito, sem ganho de correção aqui.
+  Também não é preciso `SELECT ... FOR UPDATE`: o próprio `UPDATE` adquire o lock.
+- **Sem deadlocks:** cada transação mexe em dois saldos. Se uma bloqueasse cliente→prestador e outra prestador→cliente,
+  cada uma ficaria à espera da outra. `applyMovementsInLockOrder` aplica os movimentos **sempre por ordem crescente de `userId`**,
+  em reservas e cancelamentos — quem chega em segundo espera logo na primeira linha.
+- **Duplo cancelamento:** o mesmo padrão sobre `bookings.status` (`WHERE status = 'CONFIRMED'`); o perdedor recebe `409`.
+- **Defesa em profundidade:** `CHECK (balance >= 0)` e `UNIQUE (booking_id, type)` na BD. Se um bug removesse o `WHERE`
+  condicional, a BD rejeitaria o saldo negativo — confirmado ao remover a condição de propósito: o teste de concorrência
+  falha com `users_balance_non_negative` em vez de deixar passar.
+- **`balance_after` fiável:** vem do `RETURNING` da mesma instrução, e o `created_at` do movimento é a hora da aplicação
+  (com o lock já obtido), por isso o extrato de cada utilizador fica pela ordem real dos movimentos.
+
+**Transações sem acoplar os use cases ao Prisma:** os use cases dependem da porta `IUnitOfWork`
+(`unitOfWork.run(({ bookings, wallet }) => ...)`), que recebe os repositórios já ligados à transação.
+Em produção é `PrismaUnitOfWork` (`prisma.$transaction`); nos testes unitários é `FakeUnitOfWork`, em memória e com rollback real.
+
+**Testes:** `npm test` cobre as regras (saldo igual ao preço, insuficiente, rollback, permissões, snapshot, duplo cancelamento).
+`npm run test:integration` corre contra o PostgreSQL de `DATABASE_URL` (cria e apaga os próprios utilizadores):
+10 reservas em paralelo com saldo para 3 → exatamente 3 sucessos e saldo 0.00; 10 cancelamentos em paralelo → 1 sucesso
+e um só reembolso; 20 carregamentos em paralelo → nenhum perdido; operações cruzadas entre vários clientes e prestadores →
+sem deadlocks, sem saldos negativos, `SUM(ledger) = saldo` para todos e o total de dinheiro conservado.
+
 ## Modelo de dados
 
 ```
@@ -145,7 +232,7 @@ users ──< refresh_tokens
 - **Dinheiro em `DECIMAL(15,2)`, exposto como string** (`"1500.00"`). `float` não representa 0.10 exatamente;
   um `number` em JSON também não. O mapper converte o `Decimal` do Prisma com `toFixed(2)`, sem passar por `number`.
 - **O saldo nunca é escrito por "ler → alterar → gravar".** O `UserRepository.update` só grava campos de perfil;
-  o saldo muda apenas por `UPDATE ... SET balance = balance ± x WHERE ...` dentro de transações (Fase 4).
+  o saldo muda apenas por `UPDATE ... SET balance = balance ± x WHERE ...` dentro de transações (ver *Carteira e reservas*).
 - **Ledger com sinal.** Créditos positivos, débitos negativos → `SUM(amount)` por utilizador tem de ser igual a
   `users.balance` (auditoria simples). O saldo inicial do seed entra também como movimento `TOP_UP`.
 - **Snapshots na reserva** (`price`, `service_name`, `provider_id`): editar ou eliminar o serviço não altera o histórico,
@@ -161,6 +248,16 @@ users ──< refresh_tokens
 - **Catálogo só para utilizadores autenticados**, como no contrato (o enunciado exige autenticação para aceder à API).
 - **Ordem `404` antes de `403`** ao editar/eliminar: um id inexistente dá `404` a qualquer prestador; um serviço
   de outro prestador dá `403`. Não esconde nada, porque o catálogo já é visível a todos os utilizadores autenticados.
+- **O prestador recebe no momento da reserva** (crédito imediato, como no contrato). O cancelamento devolve o valor a
+  partir do saldo do prestador; como hoje não há levantamentos, esse saldo inclui sempre o valor da reserva e o
+  `409 PROVIDER_INSUFFICIENT_BALANCE` é uma defesa para quando existirem (nunca se cria saldo negativo para reembolsar).
+- **Cancelamento sem limite de prazo e por qualquer das partes:** o enunciado não define janela de cancelamento;
+  ambas as partes podem cancelar uma reserva `CONFIRMED` e o reembolso é sempre integral.
+- **Carregamento de saldo simulado** (só `CLIENT`, ≤ 1 000 000.00 por operação): não há gateway de pagamento no âmbito
+  do desafio; cada carregamento fica no ledger como `TOP_UP`.
+- **Reserva vs. eliminação simultânea do serviço:** a reserva usa o serviço lido no início do pedido. Se o prestador o
+  eliminar nesse mesmo instante, a reserva pode concluir-se com os dados do snapshot — equivale a ter chegado um
+  milissegundo antes. O histórico e o reembolso continuam corretos porque usam o snapshot.
 - **Só dois papéis, `CLIENT` e `PROVIDER`:** são os únicos que o enunciado define; não há gestão de utilizadores por terceiros.
 
 ## Scripts úteis
@@ -170,5 +267,6 @@ users ──< refresh_tokens
 | `npm run build` | Compila para `dist/` |
 | `npm run lint:check` | ESLint + Prettier |
 | `npm test` | Testes unitários |
+| `npm run test:integration` | Concorrência contra o PostgreSQL de `DATABASE_URL` |
 | `npm run test:e2e` | Testes end-to-end |
 | `npm run db:seed` | Recria os dados de demonstração |
