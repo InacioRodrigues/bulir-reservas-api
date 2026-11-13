@@ -2,19 +2,16 @@ import {
   Controller,
   Post,
   Get,
-  Patch,
   Body,
-  UseGuards,
   UsePipes,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { AuthService } from '../../auth.service';
+import { Throttle } from '@nestjs/throttler';
 import { GetUserUseCase } from '@modules/users/application/use-cases/get-user.use-case';
 import { UserPresenter } from '@modules/users/presentation/presenters/user.presenter';
 import { Public } from '@common/decorators/public.decorator';
 import { CurrentUser } from '@common/decorators/user.decorator';
-import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { ZodValidationPipe } from '@common/pipes/zod-validation.pipe';
 import {
   registerSchema,
@@ -23,83 +20,93 @@ import {
   LoginDto,
   refreshSchema,
   RefreshDto,
-  changePasswordSchema,
-  ChangePasswordDto,
 } from '../../application/dto/auth.dto';
+import {
+  AuthResult,
+  RegisterUseCase,
+} from '../../application/use-cases/register.use-case';
+import { LoginUseCase } from '../../application/use-cases/login.use-case';
+import { RefreshSessionUseCase } from '../../application/use-cases/refresh-session.use-case';
+import { LogoutUseCase } from '../../application/use-cases/logout.use-case';
 
+/**
+ * Limite apertado nas rotas de credenciais (por IP, por rota): trava força
+ * bruta de passwords e criação massiva de contas. Lido em cada pedido para
+ * poder ser ajustado por env (ex.: subir nos testes e2e).
+ */
+const CREDENTIALS_THROTTLE = {
+  default: {
+    limit: () => Number(process.env.AUTH_THROTTLE_LIMIT ?? 5),
+    ttl: 60_000,
+  },
+};
+
+const toAuthResponse = (result: AuthResult) => ({
+  user: UserPresenter.toResponse(result.user),
+  accessToken: result.accessToken,
+  refreshToken: result.refreshToken,
+});
+
+/** Controller fino: valida a entrada, chama o use case e formata a saída. */
 @Controller('auth')
-@UseGuards(JwtAuthGuard)
 export class AuthController {
   constructor(
-    private readonly authService: AuthService,
+    private readonly registerUseCase: RegisterUseCase,
+    private readonly loginUseCase: LoginUseCase,
+    private readonly refreshSessionUseCase: RefreshSessionUseCase,
+    private readonly logoutUseCase: LogoutUseCase,
     private readonly getUserUseCase: GetUserUseCase,
   ) {}
 
   @Public()
+  @Throttle(CREDENTIALS_THROTTLE)
   @Post('register')
   @UsePipes(new ZodValidationPipe(registerSchema))
   async register(@Body() dto: RegisterDto) {
-    const tokens = await this.authService.register(dto);
+    const result = await this.registerUseCase.execute(dto);
     return {
-      message: 'Utilizador registado com sucesso',
-      data: tokens,
+      message: 'Conta criada com sucesso',
+      data: toAuthResponse(result),
     };
   }
 
   @Public()
+  @Throttle(CREDENTIALS_THROTTLE)
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @UsePipes(new ZodValidationPipe(loginSchema))
   async login(@Body() dto: LoginDto) {
-    const tokens = await this.authService.login(dto);
+    const result = await this.loginUseCase.execute(dto);
     return {
-      message: 'Login efetuado com sucesso',
-      data: tokens,
-    };
-  }
-
-  @Post('logout')
-  @HttpCode(HttpStatus.OK)
-  @UsePipes(new ZodValidationPipe(refreshSchema))
-  async logout(@Body() dto: RefreshDto, @CurrentUser('id') userId: string) {
-    await this.authService.logout(dto.refreshToken, userId);
-    return {
-      message: 'Logout efetuado com sucesso',
-      data: null,
+      message: 'Sessão iniciada com sucesso',
+      data: toAuthResponse(result),
     };
   }
 
   @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @UsePipes(new ZodValidationPipe(refreshSchema))
   async refresh(@Body() dto: RefreshDto) {
-    const tokens = await this.authService.refreshTokens(dto.refreshToken);
-    return {
-      message: 'Tokens atualizados com sucesso',
-      data: tokens,
-    };
+    const tokens = await this.refreshSessionUseCase.execute(dto.refreshToken);
+    return { message: 'Sessão renovada com sucesso', data: tokens };
   }
 
-  @Patch('change-password')
-  @HttpCode(HttpStatus.OK)
-  @UsePipes(new ZodValidationPipe(changePasswordSchema))
-  async changePassword(
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async logout(
     @CurrentUser('id') userId: string,
-    @Body() dto: ChangePasswordDto,
-  ) {
-    await this.authService.changePassword(userId, dto);
-    return {
-      message: 'Palavra-passe alterada com sucesso',
-      data: null,
-    };
+    @Body(new ZodValidationPipe(refreshSchema)) dto: RefreshDto,
+  ): Promise<void> {
+    await this.logoutUseCase.execute(userId, dto.refreshToken);
   }
 
   @Get('me')
-  async getProfile(@CurrentUser('id') userId: string) {
+  async me(@CurrentUser('id') userId: string) {
     const user = await this.getUserUseCase.execute(userId);
     return {
-      message: 'Perfil recuperado com sucesso',
+      message: 'Perfil obtido com sucesso',
       data: UserPresenter.toResponse(user),
     };
   }
