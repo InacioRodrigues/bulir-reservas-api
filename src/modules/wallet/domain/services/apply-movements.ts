@@ -1,4 +1,4 @@
-import { BaseException } from '@common/exceptions';
+import { BaseException, InternalServerException } from '@common/exceptions';
 import { WalletTransaction } from '../entities/wallet-transaction.entity';
 import {
   IWalletRepository,
@@ -6,8 +6,12 @@ import {
 } from '../repositories/wallet.repository.interface';
 
 export interface PlannedMovement extends WalletMovement {
-  /** Erro a lançar se o débito não puder ser aplicado (saldo insuficiente). */
-  onRejected: () => BaseException;
+  /**
+   * Erro a lançar se o débito não puder ser aplicado (saldo insuficiente).
+   * Um crédito só falha se a conta não existir — impossível com as FKs
+   * `RESTRICT` —, por isso dispensa este campo (erro interno por omissão).
+   */
+  onRejected?: () => BaseException;
 }
 
 /**
@@ -35,7 +39,9 @@ export async function applyMovementsInLockOrder(
   for (const { onRejected, ...movement } of ordered) {
     const transaction = await wallet.applyMovement(movement);
     if (!transaction) {
-      throw onRejected();
+      throw onRejected
+        ? onRejected()
+        : new InternalServerException('Movimento de saldo não aplicado');
     }
     applied.push(transaction);
   }
