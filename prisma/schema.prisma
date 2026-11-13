@@ -1,3 +1,12 @@
+// Modelo de dados da plataforma de reservas Bulir.
+//
+// Convenções:
+// - IDs em UUID nativo do PostgreSQL (@db.Uuid: 16 bytes em vez de texto).
+// - Tabelas e colunas em snake_case na BD (@map/@@map); camelCase no código.
+// - Dinheiro sempre em DECIMAL(15,2): nunca float (0.1 + 0.2 != 0.3).
+// - Constraints que o Prisma não exprime (CHECK) estão na migração
+//   `*_add_check_constraints/migration.sql`.
+
 datasource db {
   provider = "postgresql"
 }
@@ -7,39 +16,139 @@ generator client {
 }
 
 enum UserRole {
-  ADMIN
-  USER
-  MANAGER
+  CLIENT
+  PROVIDER
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+/// Tipo de movimento na carteira. O sinal de `amount` indica a direção:
+/// créditos (TOP_UP, BOOKING_CREDIT, REFUND_CREDIT) são positivos e
+/// débitos (BOOKING_DEBIT, REFUND_DEBIT) são negativos.
+enum WalletTransactionType {
+  TOP_UP
+  BOOKING_DEBIT
+  BOOKING_CREDIT
+  REFUND_CREDIT
+  REFUND_DEBIT
 }
 
 model User {
-  id              String         @id @default(uuid())
-  email           String         @unique
-  passwordHash    String
-  name            String
-  role            UserRole       @default(USER)
-  isActive        Boolean        @default(true)
-  isEmailVerified Boolean        @default(false)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  deletedAt       DateTime?
-  createdBy       String?
-  updatedBy       String?
+  id           String   @id @default(uuid()) @db.Uuid
+  fullName     String   @map("full_name") @db.VarChar(120)
+  /// Normalizado pela aplicação (trim + maiúsculas); CHECK garante na BD.
+  nif          String   @unique @db.VarChar(20)
+  /// Sempre em minúsculas (CHECK na BD) → o UNIQUE é, na prática, case-insensitive.
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  /// CHECK (balance >= 0): última linha de defesa contra saldo negativo.
+  balance      Decimal  @default(0) @db.Decimal(15, 2)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  refreshTokens   RefreshToken[]
+  services           Service[]
+  clientBookings     Booking[]           @relation("BookingClient")
+  providerBookings   Booking[]           @relation("BookingProvider")
+  cancelledBookings  Booking[]           @relation("BookingCancelledBy")
+  walletTransactions WalletTransaction[]
+  refreshTokens      RefreshToken[]
 
   @@map("users")
 }
 
+model Service {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @db.VarChar(100)
+  description String    @db.VarChar(1000)
+  /// CHECK (price > 0)
+  price       Decimal   @db.Decimal(15, 2)
+  providerId  String    @map("provider_id") @db.Uuid
+  /// Soft delete: o serviço deixa de aparecer, mas as reservas antigas continuam a apontar para ele.
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  provider User      @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  bookings Booking[]
+
+  /// "Os meus serviços" (GET /services/mine): WHERE provider_id = ? AND deleted_at IS NULL.
+  @@index([providerId, deletedAt])
+  /// Catálogo (GET /services): WHERE deleted_at IS NULL ORDER BY created_at DESC.
+  @@index([deletedAt, createdAt(sort: Desc)])
+  @@map("services")
+}
+
+model Booking {
+  id            String        @id @default(uuid()) @db.Uuid
+  clientId      String        @map("client_id") @db.Uuid
+  /// Snapshot: o prestador no momento da reserva (permite filtrar sem JOIN a services).
+  providerId    String        @map("provider_id") @db.Uuid
+  serviceId     String        @map("service_id") @db.Uuid
+  /// Snapshot do nome: editar o serviço depois não reescreve o histórico.
+  serviceName   String        @map("service_name") @db.VarChar(100)
+  /// Snapshot do preço pago: é este valor que se reembolsa no cancelamento.
+  price         Decimal       @db.Decimal(15, 2)
+  status        BookingStatus @default(CONFIRMED)
+  cancelledAt   DateTime?     @map("cancelled_at") @db.Timestamptz(3)
+  cancelledById String?       @map("cancelled_by_id") @db.Uuid
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  // onDelete: Restrict em tudo → o histórico nunca desaparece em cascata.
+  client             User                @relation("BookingClient", fields: [clientId], references: [id], onDelete: Restrict)
+  provider           User                @relation("BookingProvider", fields: [providerId], references: [id], onDelete: Restrict)
+  service            Service             @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  cancelledBy        User?               @relation("BookingCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  walletTransactions WalletTransaction[]
+
+  /// Histórico do cliente: WHERE client_id = ? [AND status = ?] ORDER BY created_at DESC.
+  @@index([clientId, createdAt(sort: Desc)])
+  /// Histórico do prestador: WHERE provider_id = ? [AND status = ?] ORDER BY created_at DESC.
+  @@index([providerId, createdAt(sort: Desc)])
+  /// FK sem índice = seq scan em cada verificação de RESTRICT / JOIN por serviço.
+  @@index([serviceId])
+  @@map("bookings")
+}
+
+/// Ledger (livro-razão) imutável: um registo por cada movimento de saldo.
+/// Invariante: SUM(amount) por utilizador = users.balance.
+model WalletTransaction {
+  id           String                @id @default(uuid()) @db.Uuid
+  userId       String                @map("user_id") @db.Uuid
+  bookingId    String?               @map("booking_id") @db.Uuid
+  type         WalletTransactionType
+  /// Com sinal: positivo = crédito, negativo = débito. CHECK (amount <> 0).
+  amount       Decimal               @db.Decimal(15, 2)
+  /// Saldo do utilizador imediatamente depois deste movimento. CHECK (balance_after >= 0).
+  balanceAfter Decimal               @map("balance_after") @db.Decimal(15, 2)
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+
+  /// Cada reserva gera no máximo um movimento de cada tipo (ex.: um só REFUND_CREDIT):
+  /// defesa na BD contra reembolsos em duplicado. NULLs (TOP_UP) não colidem.
+  @@unique([bookingId, type])
+  /// Extrato (GET /wallet/transactions): WHERE user_id = ? ORDER BY created_at DESC.
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("wallet_transactions")
+}
+
 model RefreshToken {
-  id        String   @id @default(uuid())
+  id        String   @id @default(uuid()) @db.Uuid
   token     String   @unique
-  userId    String
-  expiresAt DateTime
-  isRevoked Boolean  @default(false)
-  createdAt DateTime @default(now())
+  userId    String   @map("user_id") @db.Uuid
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  isRevoked Boolean  @default(false) @map("is_revoked")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  /// Revogar todas as sessões de um utilizador (deteção de reutilização de token).
+  @@index([userId])
   @@map("refresh_tokens")
 }
