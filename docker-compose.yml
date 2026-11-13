@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: bulir-reservas-api
+    ports:
+      - '${PORT:-3000}:${PORT:-3000}'
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-3000}
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_ACCESS_EXPIRATION: ${JWT_ACCESS_EXPIRATION}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: bulir-reservas-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bulir_reservas}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata_prod:

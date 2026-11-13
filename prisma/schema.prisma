@@ -1,0 +1,45 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  ADMIN
+  USER
+  MANAGER
+}
+
+model User {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  passwordHash    String
+  name            String
+  role            UserRole       @default(USER)
+  isActive        Boolean        @default(true)
+  isEmailVerified Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+  createdBy       String?
+  updatedBy       String?
+
+  refreshTokens   RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
