@@ -8,6 +8,7 @@ import compression from 'compression';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import { openApiSpec } from './config/openapi.definition';
 import { AppModule } from './app.module';
+import { buildCorsOptions } from './config/cors.config';
 import { assignRequestIds } from './common/http/request-ids';
 
 async function bootstrap() {
@@ -21,9 +22,7 @@ async function bootstrap() {
   const port = configService.get<number>('app.port', 3000);
   const prefix = configService.get<string>('app.apiPrefix', 'api/v1');
   const bodyLimit = configService.get<string>('app.bodyLimit', '16kb');
-  const corsOrigins = configService.get<string[]>('app.corsOrigins', [
-    'http://localhost:3000',
-  ]);
+  const corsOrigins = configService.get<string[]>('app.corsOrigins', []);
 
   // Set Pino Logger as global NestJS logger
   app.useLogger(app.get(Logger));
@@ -48,11 +47,7 @@ async function bootstrap() {
   app.use(compression());
 
   // CORS
-  app.enableCors({
-    origin: corsOrigins,
-    credentials: true,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-  });
+  app.enableCors(buildCorsOptions(corsOrigins));
 
   // Global Prefix
   app.setGlobalPrefix(prefix);

@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import {
+  ANY_ORIGIN,
+  DEFAULT_CORS_ORIGINS,
+  parseCorsOrigins,
+} from './cors.config';
 
 export const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
@@ -7,10 +12,20 @@ export const envSchema = z.object({
     .default('development'),
   APP_URL: z.string().url().default('http://localhost:3000'),
   API_PREFIX: z.string().default('api/v1'),
+  // Origens web autorizadas (separadas por vírgulas) ou "*". Cada entrada tem
+  // de ser uma origem (esquema + host [+ porta]), sem caminho.
   CORS_ORIGINS: z
     .string()
-    .default('http://localhost:3000')
-    .transform((val) => val.split(',')),
+    .default(DEFAULT_CORS_ORIGINS)
+    .transform(parseCorsOrigins)
+    .refine(
+      (origins) =>
+        origins.length > 0 &&
+        origins.every(
+          (o) => o === ANY_ORIGIN || /^https?:\/\/[^/\s]+$/.test(o),
+        ),
+      'CORS_ORIGINS deve listar origens como https://app.exemplo.com ou "*"',
+    ),
 
   // Tamanho máximo do corpo JSON (sintaxe do `bytes`: 16kb, 1mb, ...).
   BODY_LIMIT: z
