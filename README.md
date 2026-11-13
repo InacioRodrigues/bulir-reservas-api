@@ -36,7 +36,7 @@ npm run start:dev
 
 ### Credenciais de demonstração (seed)
 
-Password comum: `Senha@123`. O login aceita e-mail ou NIF (a partir da Fase 2).
+Password comum: `Senha@123`. O login aceita e-mail **ou** NIF no campo `identifier`.
 
 | Papel | E-mail | NIF | Notas |
 |-------|--------|-----|-------|
@@ -44,6 +44,32 @@ Password comum: `Senha@123`. O login aceita e-mail ou NIF (a partir da Fase 2).
 | CLIENT | `bruno.cliente@bulir.demo` | `006798765LA042` | saldo 0.00 Kz |
 | PROVIDER | `carla.prestadora@bulir.demo` | `5417001234` | 3 serviços |
 | PROVIDER | `daniel.prestador@bulir.demo` | `5417005678` | 2 serviços |
+
+## Autenticação
+
+| Rota | Notas |
+|------|-------|
+| `POST /auth/register` | `{ fullName, nif, email, password, role }` → `201 { user, accessToken, refreshToken }` |
+| `POST /auth/login` | `{ identifier, password }` — `identifier` com `@` é e-mail, senão NIF |
+| `POST /auth/refresh` | `{ refreshToken }` → novo par (o antigo deixa de valer) |
+| `POST /auth/logout` | `{ refreshToken }` → `204` |
+| `GET /auth/me` | perfil + saldo atual |
+
+- **Seguro por omissão:** `JwtAuthGuard` e `RolesGuard` são globais; só `@Public()` abre uma rota e `@Roles('CLIENT')`
+  restringe por papel. Regras que dependem dos dados (ex.: "só o dono edita") ficam nos use cases.
+- **Access token curto (15 min, sem estado) + refresh token longo (7 dias, com estado na BD).** O access token não
+  obriga a ir à BD de sessões em cada pedido; o refresh token pode ser revogado (logout, deteção de roubo).
+- **Rotação com deteção de reutilização:** cada refresh token só serve uma vez. A revogação é um
+  `UPDATE ... WHERE is_revoked = false` — entre dois pedidos simultâneos com o mesmo token só um vence. Se um token já
+  usado reaparecer, alguém o copiou: todas as sessões do utilizador são revogadas.
+- **Refresh tokens guardados como SHA-256**, nunca em claro: uma cópia da BD não dá sessões válidas.
+- **Erro de login genérico** (`401 INVALID_CREDENTIALS`) e o mesmo custo de hashing quando a conta não existe,
+  para não revelar (nem pelo tempo de resposta) que e-mails/NIFs estão registados.
+- **Passwords com argon2id**, 8–128 caracteres com pelo menos uma letra e um número (o máximo evita que um corpo
+  gigante torne o hashing num vetor de negação de serviço).
+- **Rate limiting:** 100 pedidos/min por IP em geral; **5/min** em `login` e `register` (`AUTH_THROTTLE_LIMIT`), 20/min em `refresh`.
+- **E-mail/NIF únicos em duas camadas:** verificação prévia (mensagem clara) + `UNIQUE` da BD. Dois registos iguais em
+  simultâneo passam ambos a verificação, mas só um `INSERT` vence; o erro `P2002` do outro é traduzido para o mesmo `409`.
 
 ## Modelo de dados
 
@@ -94,7 +120,12 @@ users ──< refresh_tokens
 - **Serviços com soft delete e FKs `ON DELETE RESTRICT`:** o histórico nunca desaparece em cascata.
 - **UUID nativo (`@db.Uuid`)**: 16 bytes em vez de ~36 de texto, índices mais pequenos. Implica validar `:id` como UUID
   na entrada (um texto qualquer daria erro de tipo no Postgres) — feito nas fases seguintes.
-- **Sem papel ADMIN:** o enunciado só define Cliente e Prestador; não há CRUD administrativo de utilizadores.
+- **NIF: 9 a 14 letras ou dígitos.** Cobre o NIF de pessoa singular (nº do BI, ex. `004512345LA041`) e de pessoa
+  coletiva (10 dígitos). Não validamos o dígito de controlo. Ser só alfanumérico garante que nunca contém `@`, o que torna
+  o login por e-mail **ou** NIF inequívoco.
+- **Normalização** (e-mail `trim` + minúsculas; NIF sem espaços + maiúsculas) aplicada no registo e no login, e reforçada
+  por `CHECK` na BD.
+- **Só dois papéis, `CLIENT` e `PROVIDER`:** são os únicos que o enunciado define; não há gestão de utilizadores por terceiros.
 
 ## Scripts úteis
 
