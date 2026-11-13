@@ -63,4 +63,15 @@ describe('Money', () => {
       '{"price":"12.00"}',
     );
   });
+
+  it('negated/abs/isNegative tratam débitos com sinal sem perder precisão', () => {
+    const price = Money.parse('1500.05');
+    const debit = price.negated();
+
+    expect(debit.toString()).toBe('-1500.05');
+    expect(debit.isNegative()).toBe(true);
+    expect(debit.abs().equals(price)).toBe(true);
+    expect(price.abs().equals(price)).toBe(true);
+    expect(price.plus(debit).isZero()).toBe(true);
+  });
 });

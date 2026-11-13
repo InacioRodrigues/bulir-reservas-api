@@ -100,6 +100,20 @@ export class Money {
     return new Money(this.cents - other.cents);
   }
 
+  /** Simétrico: um débito no ledger é o preço com sinal negativo. */
+  negated(): Money {
+    return new Money(-this.cents);
+  }
+
+  isNegative(): boolean {
+    return this.cents < 0n;
+  }
+
+  /** Valor absoluto (ex.: o montante a exigir num débito condicional). */
+  abs(): Money {
+    return this.cents < 0n ? this.negated() : this;
+  }
+
   /** Forma canónica com 2 casas: `"1500.00"`, `"-20.05"`. */
   toString(): string {
     const negative = this.cents < 0n;
