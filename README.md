@@ -4,8 +4,8 @@ API RESTful da plataforma de reservas de serviços da Bulir (Desafio 1 — Backe
 Clientes reservam serviços publicados por prestadores; o saldo de ambos é atualizado de forma atómica
 e todas as reservas ficam registadas em histórico.
 
-> 🚧 Em desenvolvimento — ver [`PROGRESSO.md`](./PROGRESSO.md). A documentação completa
-> (decisões técnicas, segurança, desempenho, deploy e credenciais de demo) chega na Fase 8.
+> 🚧 Em desenvolvimento — ver [`PROGRESSO.md`](./PROGRESSO.md). Faltam os testes e2e, o deploy e a
+> checklist final requisito → ficheiro/teste.
 
 ## Stack
 
@@ -67,7 +67,7 @@ Password comum: `Senha@123`. O login aceita e-mail **ou** NIF no campo `identifi
   para não revelar (nem pelo tempo de resposta) que e-mails/NIFs estão registados.
 - **Passwords com argon2id**, 8–128 caracteres com pelo menos uma letra e um número (o máximo evita que um corpo
   gigante torne o hashing num vetor de negação de serviço).
-- **Rate limiting:** 100 pedidos/min por IP em geral; **5/min** em `login` e `register` (`AUTH_THROTTLE_LIMIT`), 20/min em `refresh`.
+- **Rate limiting:** **5/min** por IP em `login` e `register` (`AUTH_THROTTLE_LIMIT`), 20/min em `refresh` — ver *Segurança › Rate limiting*.
 - **E-mail/NIF únicos em duas camadas:** verificação prévia (mensagem clara) + `UNIQUE` da BD. Dois registos iguais em
   simultâneo passam ambos a verificação, mas só um `INSERT` vence; o erro `P2002` do outro é traduzido para o mesmo `409`.
 
@@ -211,6 +211,149 @@ sem deadlocks, sem saldos negativos, `SUM(ledger) = saldo` para todos e o total 
   `(provider_id, created_at DESC)` e `wallet_transactions (user_id, created_at DESC)` — o `ORDER BY created_at DESC`
   sai do próprio índice, sem ordenação em memória. `id` desempata para a paginação ser estável.
   `select` explícito: nunca se leem password hash, NIF ou saldo da outra parte.
+
+## Segurança
+
+Resumo do que está ativo e porquê. Cada ponto aponta para o ficheiro onde vive.
+
+| Risco | Defesa | Onde |
+|-------|--------|------|
+| SQL Injection | Só queries parametrizadas (Prisma) + lint que proíbe `$queryRawUnsafe` | `prisma-*.repository.ts`, `eslint.config.mjs` |
+| Mass assignment | `zod` descarta campos desconhecidos (`balance`, `role`, `providerId`...) | `application/dto/*.dto.ts` |
+| XSS | API só JSON, `nosniff`, CSP `default-src 'none'`, `trim` nas strings | `config/security-headers.ts` |
+| CSRF | Sessão em `Authorization: Bearer`, sem cookies; `415` a corpos não-JSON | `common/http/require-json-body.ts` |
+| Força bruta / abuso | Rate limiting global, por rota e por utilizador | `common/throttle`, `common/guards/app-throttler.guard.ts` |
+| Negação de serviço | Corpo ≤ 16 KB, `perPage ≤ 100`, password ≤ 128, `statement_timeout` | `main.ts`, `pagination.ts`, `prisma.service.ts` |
+| Fuga de dados em logs | Redact de `Authorization`, passwords e tokens; sem corpos nem query strings | `config/logger.config.ts` |
+| Fuga em erros | `500` genérico; a mensagem real (SQL, tabelas) só vai para o log | `global-exception.filter.ts` |
+
+### SQL Injection
+
+- **Todas as queries passam pela API do Prisma**, que envia os valores como parâmetros (`$1`, `$2`, ...): o texto do
+  utilizador nunca é concatenado no SQL, por isso não pode alterar a estrutura da query. A única query manual é
+  `$queryRaw` com *template literal* no health check (também parametrizada e sem input).
+- **Regra de lint** (`no-restricted-properties`) proíbe `$queryRawUnsafe`/`$executeRawUnsafe`, as variantes que
+  aceitam SQL como string — um erro destes falha o CI em vez de chegar a produção.
+- **`escapeLikePattern`:** a pesquisa usa `ILIKE '%termo%'`. A parametrização impede injeção de SQL, mas `%` e `_`
+  continuam a ser *wildcards* do `LIKE` dentro do parâmetro: pesquisar `%` devolveria tudo e `_` qualquer carácter.
+  Escapamos `\`, `%` e `_` para que sejam texto literal. Não é uma falha de segurança grave, é correção de resultados
+  (e evita padrões caros como `%_%_%_%`).
+- **Validação antes da BD:** `zod` garante tipos e limites (UUID nos `:id`, preços como string decimal, enums), por isso
+  a BD nunca recebe um tipo inesperado.
+
+### XSS
+
+A API devolve **só JSON** e nunca gera HTML com dados do utilizador. O XSS acontece no browser, quando um
+frontend insere texto como HTML; aqui fazemos a nossa parte e documentamos a dos clientes:
+- `Content-Type: application/json` + `X-Content-Type-Options: nosniff`: o browser não "adivinha" que a resposta é HTML.
+- **CSP `default-src 'none'; frame-ancestors 'none'`** em todas as respostas da API: mesmo que um valor fosse
+  interpretado como página, nenhum script, estilo ou frame carregaria. `X-Frame-Options: DENY` contra clickjacking.
+- **Não "limpamos" HTML à entrada:** guardar `<b>` como texto é correto; alterar dados do utilizador (e só para um
+  contexto de saída) dá falsos positivos e falsa segurança. A regra é **escapar à saída** — React e React Native já o
+  fazem por omissão (nunca usar `dangerouslySetInnerHTML` com estes campos).
+- A página `/reference` (Scalar) tem uma CSP própria: scripts só do bundle do CDN com **versão fixa** ou com o
+  **nonce** gerado em cada pedido; `connect-src 'self'`. Sem `'unsafe-inline'` em `script-src`.
+
+### CSRF — porque não se aplica (e o que garante isso)
+
+CSRF explora o facto de o browser **anexar cookies automaticamente** a pedidos para o nosso domínio, mesmo quando
+vêm de outro site. Esta API não usa cookies: o access token vai no header `Authorization: Bearer`, que só o código
+da nossa app (que guardou o token) consegue pôr no pedido. Um site malicioso não conhece o token e o browser não o
+envia por ele. Não há credencial "ambiente" para abusar → não há CSRF, e um token anti-CSRF não acrescentaria nada.
+
+O que mantém esta garantia:
+- Não há `cookie-parser` nem cookies de sessão; o CORS tem `credentials: false`.
+- Os únicos pedidos *cross-site* que o browser envia sem *preflight* são formulários (`x-www-form-urlencoded`,
+  `multipart`, `text/plain`) — a API responde `415` a qualquer corpo que não seja `application/json`.
+- O CORS só autoriza as origens de `CORS_ORIGINS`; um JSON vindo de outro site exige *preflight* e é recusado.
+
+Se um dia a sessão passar para cookies (ex.: refresh token em cookie `HttpOnly` na app web), passa a ser obrigatório
+`SameSite=Strict` (ou `Lax`) + `Secure` e verificar `Origin`.
+
+A contrapartida dos tokens em JavaScript é que um XSS no frontend poderia lê-los — por isso o access token dura 15 min,
+o refresh token roda a cada uso e a reutilização revoga todas as sessões (ver *Autenticação*).
+
+### CORS
+
+`CORS_ORIGINS` lista as origens web autorizadas (por omissão `http://localhost:5173` para a app web e
+`http://localhost:8081` para o Expo em modo web). Pedidos **sem** `Origin` — a app mobile nativa, curl, outros
+servidores — não são afetados: CORS é uma regra do browser, não um controlo de acesso (esse é o JWT). Origens
+desconhecidas não recebem `Access-Control-Allow-Origin` e o browser bloqueia a resposta. O resultado do *preflight*
+fica em cache 10 min (`Access-Control-Max-Age`) e são expostos `X-Request-Id`, `X-Correlation-Id`, `Retry-After` e
+`X-RateLimit-*` para os clientes mostrarem erros úteis.
+
+### Rate limiting
+
+| Rotas | Limite (por minuto) | Contado por |
+|-------|---------------------|-------------|
+| `POST /auth/login`, `POST /auth/register` | 5 (`AUTH_THROTTLE_LIMIT`) | IP |
+| `POST /auth/refresh` | 20 | IP |
+| `POST /bookings`, `PATCH /bookings/:id/cancel`, `POST /wallet/top-up` | 10 (`MONEY_THROTTLE_LIMIT`) | utilizador |
+| Restantes | 100 (`THROTTLE_LIMIT`) | utilizador ou IP |
+
+- **Por utilizador quando há token válido, senão por IP.** O guard corre antes da autenticação (trava abuso antes de
+  qualquer trabalho); verifica a assinatura do JWT em memória (sem BD) para que um `sub` inventado não fuja ao limite.
+  Contar só por IP faria clientes atrás do mesmo NAT (empresa, operadora móvel) partilhar o limite.
+- **Os contadores são por rota:** 5 tentativas de login não gastam o limite das reservas.
+- **`TRUST_PROXY`:** atrás de um load balancer o IP do socket é o do proxy; sem confiar no `X-Forwarded-For` todos os
+  clientes partilhariam um contador. Configura-se o número de saltos (nunca `true`, que deixaria o cliente forjar o IP).
+- `429 TOO_MANY_REQUESTS` com `Retry-After`. O armazenamento é em memória: suficiente para uma instância; com várias
+  instâncias o passo seguinte é um *storage* partilhado para o throttler.
+
+### Validação e mass assignment
+
+Todos os corpos, queries e `:id` passam por `zod` antes do use case. Os schemas são `z.object` (não `passthrough`):
+campos desconhecidos são **descartados**, por isso enviar `balance` no registo, `providerId` ao criar um serviço ou
+`price`/`clientId` numa reserva não tem efeito — o prestador é sempre o utilizador do token e o preço vem sempre da BD. Strings com `trim`,
+tamanhos máximos em tudo e `perPage ≤ 100`.
+
+### Headers, corpo e erros
+
+- **Helmet:** CSP, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer`, HSTS, sem `X-Powered-By`.
+- **Corpo:** só JSON, máximo 16 KB (`BODY_LIMIT`) → `413 PAYLOAD_TOO_LARGE`; outro `Content-Type` → `415`.
+  O maior corpo legítimo (serviço com descrição de 1000 caracteres) tem poucos KB.
+- **Erros:** sempre o formato do contrato. Um erro inesperado devolve `500` genérico com `correlationId`; a mensagem
+  real (que pode conter SQL ou nomes de tabelas) só vai para o log. O Prisma usa `errorFormat: 'minimal'` para que
+  os argumentos da query (ex.: hash da password) nunca apareçam numa mensagem de erro.
+- **`X-Request-Id`/`X-Correlation-Id`** do cliente só são aceites num formato curto e seguro; caso contrário gera-se
+  um UUID (evita injetar texto arbitrário nos logs e nas respostas).
+
+### Logs
+
+Pino em JSON (legível com `pino-pretty` em desenvolvimento). Cada pedido regista método, caminho **sem query string**,
+IP real, user-agent, estado e tempo — nunca headers nem corpos. Como defesa extra, o `redact` apaga `Authorization`,
+cookies, `password`, `passwordHash`, `accessToken`, `refreshToken` e `token` em qualquer objeto registado (até dois
+níveis). Stack traces só fora de produção; em produção chega o `correlationId` para cruzar resposta e log.
+
+### Segredos
+
+`.env` fora do git; a aplicação **não arranca** se a configuração for inválida (validação `zod` no boot: segredos JWT,
+`DATABASE_URL`, `CORS_ORIGINS` com origens bem formadas). Segredos de access e refresh diferentes.
+
+## Desempenho
+
+- **Índices desenhados para as queries** (ver *Modelo de dados*): cada listagem filtra e ordena pela mesma chave do
+  índice (`(client_id, created_at DESC)`, ...), por isso a paginação lê só as linhas da página, sem ordenação em memória.
+- **Sem N+1:** número fixo de queries por página (página + relações em lote + total, em paralelo).
+- **Transações curtas:** a reserva faz só *updates* condicionais e *inserts* dentro da transação — nada de leituras
+  prévias com `SELECT ... FOR UPDATE` nem chamadas externas — e bloqueia linhas sempre pela mesma ordem (sem deadlocks).
+  O lock de uma linha de saldo dura milissegundos.
+- **Pool de ligações limitado** (`DB_POOL_MAX`, 10 por omissão): protege o Postgres quando há várias instâncias;
+  sem ligação livre em 5 s o pedido falha depressa em vez de ficar pendurado.
+- **`statement_timeout` (10 s) e `idle_in_transaction_session_timeout`:** nenhuma query ou transação esquecida
+  segura locks de saldo indefinidamente.
+- **Respostas comprimidas** (`compression`) e **`select` explícito** nas listagens de histórico (só as colunas que a
+  resposta usa).
+- **Paginação obrigatória** com `perPage ≤ 100`: nenhuma rota devolve uma tabela inteira.
+- **Preflight CORS em cache** 10 min e **logs sem queries do Prisma** (menos I/O por pedido).
+- **Rate limiting nas operações com dinheiro**: cada uma abre uma transação; um script em ciclo não consegue
+  monopolizar o pool de ligações.
+
+**Limites conhecidos (e o passo seguinte):** a pesquisa `ILIKE '%termo%'` no catálogo não usa índice B-tree — com
+dezenas de milhares de serviços, um índice GIN `pg_trgm` em `name`/`description` resolve. A ordenação por preço do
+catálogo ordena o conjunto filtrado; um índice `(deleted_at, price)` ajudaria se esse fosse o caso comum. O
+`COUNT(*)` da paginação cresce com a tabela; acima de centenas de milhares de linhas trocaria por paginação por cursor.
+O rate limiting em memória serve uma instância; com várias, *storage* partilhado.
 
 ## Modelo de dados
 
