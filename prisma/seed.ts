@@ -1,80 +1,153 @@
-import { PrismaClient, UserRole } from '@prisma/client';
+/**
+ * Seed de demonstração: 2 clientes (um com saldo) e 2 prestadores com serviços.
+ *
+ * - Apaga e recria os dados → nunca correr contra produção com dados reais
+ *   (bloqueado quando NODE_ENV=production, salvo SEED_ALLOW_PRODUCTION=true).
+ * - O saldo inicial do cliente entra pelo ledger (movimento TOP_UP), para que a
+ *   invariante SUM(wallet_transactions.amount) = users.balance se mantenha.
+ */
+import 'dotenv/config';
+import { PrismaClient, UserRole, WalletTransactionType } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import * as argon2 from 'argon2';
 
-const prisma = new PrismaClient();
+const DEMO_PASSWORD = 'Senha@123';
+
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+});
 
 async function main() {
-  console.log('🌱 Starting database seed...');
+  if (
+    process.env.NODE_ENV === 'production' &&
+    process.env.SEED_ALLOW_PRODUCTION !== 'true'
+  ) {
+    throw new Error(
+      'Seed bloqueado em produção (defina SEED_ALLOW_PRODUCTION=true para forçar).',
+    );
+  }
 
-  // ─── Clean existing data (order matters for FK constraints) ────────────────
-  await prisma.refreshToken.deleteMany();
-  await prisma.user.deleteMany();
+  console.log('A preparar dados de demonstração...');
+  const passwordHash = await argon2.hash(DEMO_PASSWORD);
 
-  // ─── Admin User ───────────────────────────────────────────────────────────
-  const adminPasswordHash = await argon2.hash('123456789');
-  const admin = await prisma.user.create({
-    data: {
-      email: 'inacio@example.com',
-      passwordHash: adminPasswordHash,
-      name: 'Inácio Rodrigues',
-      role: UserRole.ADMIN,
-      isActive: true,
-      isEmailVerified: true,
-    },
-  });
-  console.log(`✅ Created Admin: ${admin.email}`);
+  await prisma.$transaction(async (tx) => {
+    // Ordem inversa das FKs (todas com ON DELETE RESTRICT).
+    await tx.walletTransaction.deleteMany();
+    await tx.booking.deleteMany();
+    await tx.service.deleteMany();
+    await tx.refreshToken.deleteMany();
+    await tx.user.deleteMany();
 
-  // ─── Manager User ─────────────────────────────────────────────────────────
-  const managerPasswordHash = await argon2.hash('Manager@123456');
-  const manager = await prisma.user.create({
-    data: {
-      email: 'manager@example.com',
-      passwordHash: managerPasswordHash,
-      name: 'Manager User',
-      role: UserRole.MANAGER,
-      isActive: true,
-      isEmailVerified: true,
-    },
-  });
-  console.log(`✅ Created Manager: ${manager.email}`);
-
-  // ─── Regular Users ────────────────────────────────────────────────────────
-  const regularPasswordHash = await argon2.hash('User@123456');
-  const users = await Promise.all([
-    prisma.user.create({
+    // ─── Clientes ────────────────────────────────────────────────────────────
+    const ana = await tx.user.create({
       data: {
-        email: 'alice@example.com',
-        passwordHash: regularPasswordHash,
-        name: 'Alice Silva',
-        role: UserRole.USER,
-        isActive: true,
-        isEmailVerified: true,
+        fullName: 'Ana Paula Domingos',
+        nif: '004512345LA041',
+        email: 'ana.cliente@bulir.demo',
+        passwordHash,
+        role: UserRole.CLIENT,
+        balance: '50000.00',
       },
-    }),
-    prisma.user.create({
+    });
+    await tx.walletTransaction.create({
       data: {
-        email: 'bob@example.com',
-        passwordHash: regularPasswordHash,
-        name: 'Bob Santos',
-        role: UserRole.USER,
-        isActive: true,
-        isEmailVerified: false,
+        userId: ana.id,
+        type: WalletTransactionType.TOP_UP,
+        amount: '50000.00',
+        balanceAfter: '50000.00',
       },
-    }),
-  ]);
-  users.forEach((u) => console.log(`✅ Created User: ${u.email}`));
+    });
 
-  console.log('\n🎉 Seed completed successfully!');
-  console.log('\n📋 Seed credentials:');
-  console.log('   Admin   → inacio@example.com    / 123456789');
-  console.log('   Manager → manager@example.com  / Manager@123456');
-  console.log('   User    → alice@example.com    / User@123456');
+    await tx.user.create({
+      data: {
+        fullName: 'Bruno Miguel Cassoma',
+        nif: '006798765LA042',
+        email: 'bruno.cliente@bulir.demo',
+        passwordHash,
+        role: UserRole.CLIENT,
+      },
+    });
+
+    // ─── Prestadores e serviços ─────────────────────────────────────────────
+    await tx.user.create({
+      data: {
+        fullName: 'Carla Sofia Neto',
+        nif: '5417001234',
+        email: 'carla.prestadora@bulir.demo',
+        passwordHash,
+        role: UserRole.PROVIDER,
+        services: {
+          create: [
+            {
+              name: 'Corte de cabelo',
+              description: 'Corte masculino ou feminino com lavagem incluída.',
+              price: '5000.00',
+            },
+            {
+              name: 'Manicure e pedicure',
+              description: 'Tratamento completo de mãos e pés, com verniz.',
+              price: '7500.00',
+            },
+            {
+              name: 'Maquilhagem para eventos',
+              description:
+                'Maquilhagem profissional para casamentos e cerimónias.',
+              price: '15000.00',
+            },
+          ],
+        },
+      },
+    });
+
+    await tx.user.create({
+      data: {
+        fullName: 'Daniel José Kiala',
+        nif: '5417005678',
+        email: 'daniel.prestador@bulir.demo',
+        passwordHash,
+        role: UserRole.PROVIDER,
+        services: {
+          create: [
+            {
+              name: 'Reparação de computadores',
+              description:
+                'Diagnóstico e reparação de portáteis e computadores de secretária.',
+              price: '12000.00',
+            },
+            {
+              name: 'Instalação de rede Wi-Fi',
+              description:
+                'Instalação e configuração de router e pontos de acesso em casa.',
+              price: '25000.00',
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  console.log(
+    '\nSeed concluído. Credenciais (password comum: %s)',
+    DEMO_PASSWORD,
+  );
+  console.log(
+    '  CLIENT   ana.cliente@bulir.demo        NIF 004512345LA041  saldo 50000.00',
+  );
+  console.log(
+    '  CLIENT   bruno.cliente@bulir.demo      NIF 006798765LA042  saldo 0.00',
+  );
+  console.log(
+    '  PROVIDER carla.prestadora@bulir.demo   NIF 5417001234      3 serviços',
+  );
+  console.log(
+    '  PROVIDER daniel.prestador@bulir.demo   NIF 5417005678      2 serviços',
+  );
 }
 
 main()
-  .catch((e) => {
-    console.error('❌ Seed failed:', e);
-    process.exit(1);
+  .catch((error) => {
+    console.error('Seed falhou:', error);
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();
