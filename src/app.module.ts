@@ -13,6 +13,7 @@ import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ServicesModule } from './modules/services/services.module';
 import { WalletModule } from './modules/wallet/wallet.module';
+import { BookingsModule } from './modules/bookings/bookings.module';
 import { HealthModule } from './modules/health/health.module';
 
 import { RequestContextMiddleware } from './common/middlewares/request-context.middleware';
@@ -53,6 +54,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
     AuthModule,
     ServicesModule,
     WalletModule,
+    BookingsModule,
     HealthModule,
   ],
   providers: [
