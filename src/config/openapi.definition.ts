@@ -1,3 +1,5 @@
+import { servicesPaths } from './openapi.services';
+
 export const openApiSpec = {
   openapi: '3.0.3',
   info: {
@@ -33,6 +35,33 @@ export const openApiSpec = {
           role: { type: 'string', enum: ['CLIENT', 'PROVIDER'] },
           balance: { type: 'string', example: '1500.00' },
           createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      Service: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          name: { type: 'string' },
+          description: { type: 'string' },
+          price: { type: 'string', example: '5000.00' },
+          provider: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              fullName: { type: 'string' },
+            },
+          },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      PageMeta: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer', example: 1 },
+          perPage: { type: 'integer', example: 20 },
+          total: { type: 'integer', example: 42 },
+          totalPages: { type: 'integer', example: 3 },
         },
       },
       AuthResponse: {
@@ -321,5 +350,6 @@ export const openApiSpec = {
         },
       },
     },
+    ...servicesPaths,
   },
 };
