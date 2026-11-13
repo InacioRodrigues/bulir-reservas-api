@@ -24,6 +24,16 @@ const ORDER_BY: Record<ServiceSort, Prisma.ServiceOrderByWithRelationInput[]> =
     name_asc: [{ name: 'asc' }, { id: 'asc' }],
   };
 
+/**
+ * O `contains` do Prisma gera `ILIKE '%' || $1 || '%'` mas não escapa os
+ * curingas do próprio texto: pesquisar "%" devolveria tudo e "_" qualquer
+ * carácter. Escapamos `\`, `%` e `_` (o `\` é o escape por omissão do
+ * `LIKE` no PostgreSQL) para o texto ser procurado literalmente.
+ */
+export function escapeLikePattern(term: string): string {
+  return term.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
 @Injectable()
 export class PrismaServiceRepository implements IServiceRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -112,9 +122,10 @@ export class PrismaServiceRepository implements IServiceRepository {
       };
     }
     if (criteria.search) {
+      const term = escapeLikePattern(criteria.search);
       where.OR = [
-        { name: { contains: criteria.search, mode: 'insensitive' } },
-        { description: { contains: criteria.search, mode: 'insensitive' } },
+        { name: { contains: term, mode: 'insensitive' } },
+        { description: { contains: term, mode: 'insensitive' } },
       ];
     }
     return where;
