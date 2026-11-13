@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { Page, pageOffset } from '@common/pagination/pagination';
 import { Booking } from '@modules/bookings/domain/entities/booking.entity';
 import { BookingStatus } from '@modules/bookings/domain/entities/booking-status';
-import { IBookingRepository } from '@modules/bookings/domain/repositories/booking.repository.interface';
+import {
+  BookingSearchCriteria,
+  IBookingRepository,
+} from '@modules/bookings/domain/repositories/booking.repository.interface';
 import { UndoLog } from './fake-unit-of-work';
 
 /** "Tabela" `bookings` + nomes dos utilizadores (o JOIN com `users`). */
@@ -72,6 +76,30 @@ export class InMemoryBookingRepository implements IBookingRepository {
       this.store.items[this.store.items.indexOf(cancelled)] = previous;
     });
     return Promise.resolve(this.copy(cancelled));
+  }
+
+  search(criteria: BookingSearchCriteria): Promise<Page<Booking>> {
+    const matches = this.store.items
+      .filter((b) =>
+        'clientId' in criteria
+          ? b.clientId === criteria.clientId
+          : b.providerId === criteria.providerId,
+      )
+      .filter((b) => !criteria.status || b.status === criteria.status)
+      .sort(
+        (a, b) =>
+          b.createdAt.getTime() - a.createdAt.getTime() ||
+          b.id.localeCompare(a.id),
+      );
+    const offset = pageOffset(criteria);
+    return Promise.resolve({
+      items: matches
+        .slice(offset, offset + criteria.perPage)
+        .map((b) => this.copy(b)),
+      total: matches.length,
+      page: criteria.page,
+      perPage: criteria.perPage,
+    });
   }
 
   private copy(booking: Booking): Booking {

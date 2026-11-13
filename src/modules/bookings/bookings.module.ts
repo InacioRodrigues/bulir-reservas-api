@@ -11,6 +11,8 @@ import {
 import { PrismaBookingRepository } from './infrastructure/repositories/prisma-booking.repository';
 import { CreateBookingUseCase } from './application/use-cases/create-booking.use-case';
 import { CancelBookingUseCase } from './application/use-cases/cancel-booking.use-case';
+import { GetBookingUseCase } from './application/use-cases/get-booking.use-case';
+import { ListBookingsUseCase } from './application/use-cases/list-bookings.use-case';
 import { BookingsController } from './presentation/controllers/bookings.controller';
 
 @Module({
@@ -36,6 +38,8 @@ import { BookingsController } from './presentation/controllers/bookings.controll
     },
     CreateBookingUseCase,
     CancelBookingUseCase,
+    GetBookingUseCase,
+    ListBookingsUseCase,
   ],
 })
 export class BookingsModule {}

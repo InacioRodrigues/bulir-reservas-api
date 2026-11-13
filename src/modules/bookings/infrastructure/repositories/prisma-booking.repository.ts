@@ -1,7 +1,12 @@
+import { Prisma } from '@prisma/client';
+import { Page, pageOffset } from '@common/pagination/pagination';
 import { PrismaDb } from '@database/prisma-unit-of-work';
 import { Booking } from '../../domain/entities/booking.entity';
 import { BookingStatus } from '../../domain/entities/booking-status';
-import { IBookingRepository } from '../../domain/repositories/booking.repository.interface';
+import {
+  BookingSearchCriteria,
+  IBookingRepository,
+} from '../../domain/repositories/booking.repository.interface';
 import { BookingMapper, bookingSelect } from '../prisma/booking.mapper';
 
 /**
@@ -46,5 +51,35 @@ export class PrismaBookingRepository implements IBookingRepository {
       return null;
     }
     return this.findById(id);
+  }
+
+  async search(criteria: BookingSearchCriteria): Promise<Page<Booking>> {
+    const where: Prisma.BookingWhereInput = {
+      ...('clientId' in criteria
+        ? { clientId: criteria.clientId }
+        : { providerId: criteria.providerId }),
+      ...(criteria.status && { status: criteria.status }),
+    };
+
+    // Uma query para a página (com os nomes por JOIN no mesmo SELECT — sem
+    // N+1) e outra para o total, em paralelo. Ordem pelo índice
+    // (client_id|provider_id, created_at DESC); `id` desempata.
+    const [rows, total] = await Promise.all([
+      this.db.booking.findMany({
+        where,
+        select: bookingSelect,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: pageOffset(criteria),
+        take: criteria.perPage,
+      }),
+      this.db.booking.count({ where }),
+    ]);
+
+    return {
+      items: rows.map((row) => BookingMapper.toDomain(row)),
+      total,
+      page: criteria.page,
+      perPage: criteria.perPage,
+    };
   }
 }
