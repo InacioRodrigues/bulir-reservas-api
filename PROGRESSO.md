@@ -6,7 +6,7 @@
 - [x] **Fase 3** — Serviços (CRUD do prestador, ownership, soft delete, listagem paginada)
 - [x] **Fase 4** — Carteira e reservas (top-up, reserva e cancelamento atómicos, ledger)
 - [x] **Fase 5** — Histórico (reservas e movimentos de carteira paginados, sem N+1)
-- [ ] **Fase 6** — Segurança e desempenho (Helmet, CORS, rate limiting, XSS/CSRF/SQLi, índices)
+- [x] **Fase 6** — Segurança e desempenho (Helmet, CORS, rate limiting, XSS/CSRF/SQLi, índices)
 - [ ] **Fase 7** — Testes (unit + e2e com Postgres real, teste de concorrência, CI)
 - [ ] **Fase 8** — Docker, documentação e deploy
 - [ ] **Fase 9** — Revisão final (checklist requisito → ficheiro/teste)
@@ -64,3 +64,19 @@
   `bookings_client_id_created_at_idx` / `wallet_transactions_user_id_created_at_idx`.
 - Comentários corrigidos: o Prisma carrega relações em lote (`IN (...)`), não por JOIN (`relationJoins` é *preview*).
 
+## Notas da Fase 6
+
+- Helmet com duas CSP (`src/config/security-headers.ts`): API `default-src 'none'`; `/reference` com nonce por pedido
+  e bundle do Scalar com versão fixa (`@scalar/api-reference@1.76.4`). Verificado em Chrome headless sem violações.
+- CORS por `CORS_ORIGINS` (omissão: `:5173` web, `:8081` Expo web), `credentials: false`, preflight em cache 10 min;
+  pedidos sem `Origin` (app nativa) passam.
+- Corpo só JSON, ≤ 16 KB (`BODY_LIMIT`): `413 PAYLOAD_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE` (antes: 500 e 400 confusos).
+  Ids de pedido atribuídos antes do parser e saneados. Removido o `cookie-parser` (sem cookies → sem CSRF).
+- Rate limiting: `AppThrottlerGuard` conta por utilizador (JWT verificado) ou IP; `MONEY_THROTTLE_LIMIT` 10/min em
+  reservar, cancelar e top-up; políticas em `src/common/throttle`; `TRUST_PROXY` para o IP real atrás de proxy.
+- Logs: `redact` de `Authorization`, cookies, passwords e tokens; sem query string; stack só fora de produção; `LOG_LEVEL`.
+  Prisma com `errorFormat: 'minimal'` e sem log de queries.
+- Pool `pg` limitado (`DB_POOL_MAX`), `statement_timeout` e `idle_in_transaction_session_timeout`.
+- Lint proíbe `$queryRawUnsafe`/`$executeRawUnsafe`. README › Segurança e Desempenho; contrato com 413/415 e limites.
+- Para a Fase 7: os testes e2e devem subir `AUTH_THROTTLE_LIMIT`/`MONEY_THROTTLE_LIMIT`; o URL do servidor na spec
+  OpenAPI está fixo em `http://localhost:3000` (ajustar na Fase 8).
