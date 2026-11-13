@@ -1,5 +1,5 @@
 /** Rotas `/bookings` da especificação OpenAPI (ver `openapi.definition.ts`). */
-import { errorResponse, uuidPathParam } from './openapi.common';
+import { errorResponse, pageParams, uuidPathParam } from './openapi.common';
 
 const idParam = uuidPathParam('UUID da reserva');
 
@@ -61,6 +61,49 @@ export const bookingNotFound = errorResponse('`NOT_FOUND`', {
 
 export const bookingsPaths = {
   '/api/v1/bookings': {
+    get: {
+      summary: 'Histórico de reservas em que participo',
+      description:
+        'Cliente: as reservas que fez. Prestador: as reservas dos seus serviços. Inclui canceladas e de serviços já eliminados (nome e preço do momento da reserva). Mais recentes primeiro.',
+      tags: ['Bookings'],
+      parameters: [
+        ...pageParams,
+        {
+          name: 'status',
+          in: 'query',
+          schema: { type: 'string', enum: ['CONFIRMED', 'CANCELLED'] },
+        },
+      ],
+      responses: {
+        '200': {
+          description: 'Reservas obtidas com sucesso',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  success: { type: 'boolean', example: true },
+                  message: { type: 'string' },
+                  data: {
+                    type: 'array',
+                    items: { $ref: '#/components/schemas/Booking' },
+                  },
+                  meta: { $ref: '#/components/schemas/PageMeta' },
+                },
+              },
+              example: {
+                success: true,
+                message: 'Reservas obtidas com sucesso',
+                data: [bookingExample],
+                meta: { page: 1, perPage: 20, total: 1, totalPages: 1 },
+              },
+            },
+          },
+        },
+        '400': { $ref: '#/components/responses/ValidationError' },
+        '401': { $ref: '#/components/responses/Unauthorized' },
+      },
+    },
     post: {
       summary: 'Reservar um serviço (CLIENT)',
       description:
@@ -98,6 +141,20 @@ export const bookingsPaths = {
           code: 'INSUFFICIENT_BALANCE',
           message: 'Saldo insuficiente para reservar este serviço',
         }),
+      },
+    },
+  },
+  '/api/v1/bookings/{id}': {
+    parameters: [idParam],
+    get: {
+      summary: 'Detalhe de uma reserva (participante)',
+      tags: ['Bookings'],
+      responses: {
+        '200': bookingResponse('Reserva obtida com sucesso'),
+        '400': { $ref: '#/components/responses/ValidationError' },
+        '401': { $ref: '#/components/responses/Unauthorized' },
+        '403': notParticipant,
+        '404': bookingNotFound,
       },
     },
   },

@@ -98,6 +98,30 @@ export const openApiSpec = {
           },
         },
       },
+      WalletTransaction: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          type: {
+            type: 'string',
+            enum: [
+              'TOP_UP',
+              'BOOKING_DEBIT',
+              'BOOKING_CREDIT',
+              'REFUND_CREDIT',
+              'REFUND_DEBIT',
+            ],
+          },
+          amount: {
+            type: 'string',
+            example: '-5000.00',
+            description: 'Com sinal: crédito positivo, débito negativo',
+          },
+          balanceAfter: { type: 'string', example: '45000.00' },
+          bookingId: { type: 'string', format: 'uuid', nullable: true },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
       PageMeta: {
         type: 'object',
         properties: {
