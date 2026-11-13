@@ -33,3 +33,14 @@ export function getUniqueViolationFields(error: unknown): string[] | null {
   }
   return [];
 }
+
+/**
+ * `true` se o Prisma não encontrou o registo a alterar (`P2025`), por exemplo
+ * num `update` cujo `where` deixou de corresponder (linha eliminada entretanto).
+ */
+export function isRecordNotFound(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2025'
+  );
+}
