@@ -4,8 +4,11 @@ API RESTful da plataforma de reservas de serviços da Bulir (Desafio 1 — Backe
 Clientes reservam serviços publicados por prestadores; o saldo de ambos é atualizado de forma atómica
 e todas as reservas ficam registadas em histórico.
 
-> 🚧 Em desenvolvimento — ver [`PROGRESSO.md`](./PROGRESSO.md). Faltam os testes e2e, o deploy e a
+> 🚧 Em desenvolvimento — ver [`PROGRESSO.md`](./PROGRESSO.md). Faltam os testes e2e e a
 > checklist final requisito → ficheiro/teste.
+>
+> **Produção:** `https://<serviço>.onrender.com/api/v1` · documentação em `/reference` (URL definitivo após o
+> primeiro deploy — ver [Deploy](#deploy-render--neon)).
 
 ## Stack
 
@@ -31,8 +34,11 @@ npm run start:dev
 ```
 
 - API: `http://localhost:3000/api/v1`
-- Documentação (Scalar): `http://localhost:3000/reference`
-- Saúde: `GET /api/v1/health`
+- Documentação (Scalar): `http://localhost:3000/reference` · OpenAPI em JSON: `http://localhost:3000/openapi.json`
+- Saúde: `GET /api/v1/health` (`200` com a BD acessível, `503 DATABASE_UNAVAILABLE` sem ela)
+
+Alternativa sem Node no host: `docker compose -f docker-compose.dev.yml --profile api up -d` (API em modo watch +
+PostgreSQL; aplica as migrações no arranque).
 
 ### Credenciais de demonstração (seed)
 
@@ -212,6 +218,85 @@ sem deadlocks, sem saldos negativos, `SUM(ledger) = saldo` para todos e o total 
   sai do próprio índice, sem ordenação em memória. `id` desempata para a paginação ser estável.
   `select` explícito: nunca se leem password hash, NIF ou saldo da outra parte.
 
+## Docker
+
+| Ficheiro | Para quê |
+|----------|----------|
+| `Dockerfile.prod` | Imagem de produção (a mesma que corre no deploy) |
+| `scripts/docker-entrypoint.sh` | Arranque: `prisma migrate deploy` → seed opcional → `exec node dist/main.js` |
+| `docker-compose.yml` | Produção local: imagem de produção + PostgreSQL, para validar antes de publicar |
+| `scripts/smoke-test.sh` | Constrói, sobe e testa a imagem com `curl` (`npm run docker:smoke`) |
+| `Dockerfile.dev` / `docker-compose.dev.yml` | Desenvolvimento (PostgreSQL; API em contentor com `--profile api`) |
+
+**Imagem de produção** (`Dockerfile.prod`), em três estágios:
+
+1. `deps` — `npm ci` com as devDependencies (necessárias para compilar).
+2. `builder` — `prisma generate`, `nest build`, compila o seed para JS e faz `npm prune --omit=dev`.
+3. `runner` — `node:22-alpine` limpo com só `dist/`, `node_modules` de runtime, `prisma/` (migrações) e o entrypoint.
+   O código e as dependências pertencem ao `root`; o processo corre como **`node` (uid 1000)** e não consegue
+   alterar o próprio código. `tini` como PID 1 reencaminha o `SIGTERM` e o Nest fecha as ligações à BD
+   (paragem em < 1 s). `HEALTHCHECK` chama `GET /api/v1/health`, que só responde `200` com a BD acessível.
+
+No `docker-compose.yml` a API corre ainda com **sistema de ficheiros só de leitura** (`read_only`, `/tmp` em memória)
+e `no-new-privileges`; o PostgreSQL não publica porta (só a API o alcança). Os segredos são obrigatórios
+(`${VAR:?}`): o compose recusa arrancar sem eles.
+
+```bash
+npm run docker:smoke   # build + API + PostgreSQL descartáveis na porta 3100 + testes curl + limpeza
+```
+
+O smoke test gera segredos aleatórios, espera pelo healthcheck, confirma que o processo corre como `node` e verifica:
+`/health`, `/openapi.json` (com o servidor = `APP_URL`), `/reference`, `401` sem token, login por NIF, catálogo,
+reserva `201`, cancelamento `200`, duplo cancelamento `409`, saldo reposto após reembolso e, depois de reiniciar o
+contentor, que migrações e seed são idempotentes.
+
+**Migrações no arranque** (e não num passo à parte): o plano gratuito do Render não tem *pre-deploy command*, e
+`prisma migrate deploy` é seguro de repetir — só aplica migrações pendentes e serializa instâncias concorrentes com um
+*advisory lock* no Postgres. Com um orquestrador que tenha *jobs* (ou o `preDeployCommand` de um plano pago),
+basta `RUN_MIGRATIONS=false` e correr `./node_modules/.bin/prisma migrate deploy` nesse passo.
+
+**Seed em produção, de forma segura.** `prisma/seed.ts` tem dois modos:
+
+| `SEED_MODE` | O que faz | Onde |
+|-------------|-----------|------|
+| `reset` | Apaga **tudo** e recria a demonstração | Omissão em desenvolvimento; **recusado** com `NODE_ENV=production` |
+| `ensure` | Cria as 4 contas de demonstração **só se nenhuma existir**; nunca apaga nem altera dados | Omissão em produção |
+
+Com `SEED_DEMO_DATA=true`, o entrypoint corre o modo `ensure` em cada arranque: a primeira vez cria as contas,
+as seguintes não fazem nada (e dois arranques em simultâneo resolvem-se pelo `UNIQUE` de e-mail/NIF). Assim a demo
+está disponível logo após o deploy sem nunca arriscar apagar dados de quem se registou.
+
+## Deploy (Render + Neon)
+
+Tudo o que é preciso está no repositório: [`render.yaml`](./render.yaml) (Blueprint) descreve um *web service*
+Docker construído a partir de `Dockerfile.prod`, com health check em `/api/v1/health`, segredos JWT gerados pelo
+Render e auto-deploy a cada push para `main`. A base de dados é um PostgreSQL gerido (Neon, plano gratuito sem
+expiração; o PostgreSQL gratuito do Render expira ao fim de 30 dias).
+
+1. **Neon** (neon.tech) → *New project* → região **AWS Europe Central (Frankfurt)**, PostgreSQL 16.
+   Copiar a *connection string* **direta** (desligar *Connection pooling*), que termina em `?sslmode=require`.
+2. **Render** (render.com) → *New* → *Blueprint* → ligar o GitHub e escolher `bulir-reservas-api`.
+   O Render pede as variáveis `sync: false`:
+   - `DATABASE_URL` — a connection string do passo 1;
+   - `CORS_ORIGINS` — URL da app web publicada (ex.: `https://bulir-reservas-web.vercel.app`); várias separadas por vírgulas.
+3. *Apply*. O primeiro deploy constrói a imagem, aplica as migrações, cria as contas de demonstração e só fica
+   *live* quando `/api/v1/health` responde `200`.
+4. Verificar: `curl https://<serviço>.onrender.com/api/v1/health` e abrir `https://<serviço>.onrender.com/reference`.
+
+Notas:
+- **Porquê a ligação direta e não a *pooled*:** as migrações precisam de uma ligação de sessão e o pool da aplicação
+  envia `statement_timeout` nos parâmetros de arranque da ligação, que o PgBouncer do Neon (modo transação) não suporta. Com `DB_POOL_MAX=5`, uma
+  instância usa no máximo 5 ligações — muito abaixo do limite do Neon.
+- **`APP_URL`** (servidor da spec OpenAPI) não precisa de ser definido no Render: sem ele a API usa o
+  `RENDER_EXTERNAL_URL` que a plataforma injeta. Com domínio próprio, definir `APP_URL=https://api.exemplo.com`.
+- **`TRUST_PROXY=1`:** o Render tem um load balancer à frente da API; sem isto todos os pedidos teriam o IP do proxy
+  e partilhariam o mesmo contador de rate limit.
+- **Plano gratuito:** o serviço adormece após 15 min sem tráfego e o primeiro pedido seguinte demora ~1 min.
+- **Rodar segredos:** no Render, *Environment* → editar `JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET` (ex.: valor de
+  `openssl rand -base64 48`) → *Save* (redeploy automático). Todas as sessões existentes deixam de ser válidas.
+- **Outra plataforma** (Railway, Fly.io, VPS): é a mesma imagem — basta `DATABASE_URL`, os dois segredos JWT,
+  `CORS_ORIGINS`, `TRUST_PROXY` e, opcionalmente, `SEED_DEMO_DATA=true`.
+
 ## Segurança
 
 Resumo do que está ativo e porquê. Cada ponto aponta para o ficheiro onde vive.
@@ -329,6 +414,8 @@ níveis). Stack traces só fora de produção; em produção chega o `correlatio
 
 `.env` fora do git; a aplicação **não arranca** se a configuração for inválida (validação `zod` no boot: segredos JWT,
 `DATABASE_URL`, `CORS_ORIGINS` com origens bem formadas). Segredos de access e refresh diferentes.
+Em produção os segredos JWT são gerados pelo Render (`generateValue` no `render.yaml`) e nunca passam pelo git;
+o `docker-compose.yml` recusa arrancar sem eles e a imagem não contém nenhum `.env` (excluído no `.dockerignore`).
 
 ## Desempenho
 
@@ -433,4 +520,6 @@ users ──< refresh_tokens
 | `npm test` | Testes unitários |
 | `npm run test:integration` | Concorrência contra o PostgreSQL de `DATABASE_URL` |
 | `npm run test:e2e` | Testes end-to-end |
-| `npm run db:seed` | Recria os dados de demonstração |
+| `npm run db:seed` | Recria os dados de demonstração (`SEED_MODE=ensure` para não apagar nada) |
+| `npm run docker:smoke` | Build da imagem de produção + smoke test com `curl` |
+| `npm run docker:prod` | Imagem de produção + PostgreSQL locais (exige `POSTGRES_PASSWORD` e segredos JWT) |
