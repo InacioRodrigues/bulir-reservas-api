@@ -70,11 +70,6 @@ export class User {
     return this.props.role === UserRole.PROVIDER;
   }
 
-  updatePassword(passwordHash: string): void {
-    this.props.passwordHash = passwordHash;
-    this.props.updatedAt = new Date();
-  }
-
   toObject(): Required<UserProps> {
     return { ...this.props };
   }
