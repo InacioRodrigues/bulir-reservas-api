@@ -10,7 +10,9 @@ export const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'production', 'test'])
     .default('development'),
-  APP_URL: z.string().url().default('http://localhost:3000'),
+  // URL público da API (sem caminho), usado como servidor na spec OpenAPI.
+  // Opcional: sem ele vale RENDER_EXTERNAL_URL ou http://localhost:PORT.
+  APP_URL: z.string().url().optional(),
   API_PREFIX: z.string().default('api/v1'),
   // Origens web autorizadas (separadas por vírgulas) ou "*". Cada entrada tem
   // de ser uma origem (esquema + host [+ porta]), sem caminho.

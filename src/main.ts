@@ -5,11 +5,12 @@ import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import compression from 'compression';
 import { apiReference } from '@scalar/nestjs-api-reference';
-import { openApiSpec } from './config/openapi.definition';
+import { buildOpenApiSpec } from './config/openapi.definition';
 import { AppModule } from './app.module';
 import { buildCorsOptions } from './config/cors.config';
 import {
   DOCS_PATH,
+  OPENAPI_JSON_PATH,
   SCALAR_CDN,
   securityHeaders,
 } from './config/security-headers';
@@ -29,6 +30,11 @@ async function bootstrap() {
   const bodyLimit = configService.get<string>('app.bodyLimit', '16kb');
   const corsOrigins = configService.get<string[]>('app.corsOrigins', []);
   const trustProxy = configService.get<number>('app.trustProxy', 0);
+  const appUrl = configService.get<string>(
+    'app.appUrl',
+    `http://localhost:${port}`,
+  );
+  const openApiSpec = buildOpenApiSpec(appUrl);
 
   // Atrás de um proxy (Render, Railway, nginx) o IP do socket é o do proxy.
   // Confiar em N saltos faz `req.ip` vir de X-Forwarded-For — sem isto, todos
@@ -64,6 +70,11 @@ async function bootstrap() {
   // Enable Graceful Shutdown hooks
   app.enableShutdownHooks();
 
+  // Documento OpenAPI em bruto (geração de clientes, importação no Postman).
+  app.use(OPENAPI_JSON_PATH, (_req: Request, res: Response) => {
+    res.json(openApiSpec);
+  });
+
   // Documentação interativa (Scalar). Renderizada por pedido para incluir o
   // nonce da CSP gerado em `securityHeaders()`.
   app.use(DOCS_PATH, (req: Request, res: Response) => {
@@ -78,12 +89,8 @@ async function bootstrap() {
 
   // Retrieve logger instance for boot output
   const logger = app.get(Logger);
-  logger.log(
-    `🚀 Application is running on: http://localhost:${port}/${prefix}`,
-  );
-  logger.log(
-    `📄 Scalar API Documentation: http://localhost:${port}${DOCS_PATH}`,
-  );
+  logger.log(`🚀 Application is running on: ${appUrl}/${prefix}`);
+  logger.log(`📄 Scalar API Documentation: ${appUrl}${DOCS_PATH}`);
 }
 
 bootstrap().catch((err) => {

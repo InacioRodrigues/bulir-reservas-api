@@ -2,7 +2,7 @@ import { servicesPaths } from './openapi.services';
 import { walletPaths } from './openapi.wallet';
 import { bookingsPaths } from './openapi.bookings';
 
-export const openApiSpec = {
+const baseSpec = {
   openapi: '3.0.3',
   info: {
     title: 'Bulir Reservas API',
@@ -10,12 +10,6 @@ export const openApiSpec = {
       'Documentação de referência da API de reservas Bulir (Scalar).',
     version: '1.0.0',
   },
-  servers: [
-    {
-      url: 'http://localhost:3000',
-      description: 'Servidor Local',
-    },
-  ],
   components: {
     securitySchemes: {
       bearerAuth: {
@@ -441,3 +435,17 @@ export const openApiSpec = {
     ...bookingsPaths,
   },
 };
+
+/**
+ * Documento OpenAPI servido em `/reference` e `/openapi.json`. O servidor vem
+ * de `APP_URL` (o URL público da instância): o "Try it" do Scalar chama este
+ * URL e a CSP da página só autoriza a própria origem (`connect-src 'self'`).
+ */
+export function buildOpenApiSpec(serverUrl: string) {
+  return {
+    ...baseSpec,
+    servers: [
+      { url: serverUrl.replace(/\/+$/, ''), description: 'Esta instância' },
+    ],
+  };
+}

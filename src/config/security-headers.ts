@@ -5,6 +5,9 @@ import helmet from 'helmet';
 /** Caminho da página de documentação interativa (Scalar). */
 export const DOCS_PATH = '/reference';
 
+/** Caminho do documento OpenAPI em JSON. */
+export const OPENAPI_JSON_PATH = '/openapi.json';
+
 /**
  * Bundle do Scalar servido pelo jsDelivr com versão fixa: um URL sem versão
  * passaria a executar qualquer versão nova publicada no CDN.
