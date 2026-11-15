@@ -6,7 +6,14 @@
   "testRegex": "test/integration/.*\\.int-spec\\.ts$",
   "testTimeout": 60000,
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "diagnostics": {
+          "ignoreCodes": [151002]
+        }
+      }
+    ]
   },
   "moduleNameMapper": {
     "^@core/(.*)$": "<rootDir>/src/core/$1",
