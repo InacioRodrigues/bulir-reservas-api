@@ -6,8 +6,8 @@ e todas as reservas ficam registadas em histórico.
 
 > Estado e fases: [`PROGRESSO.md`](./PROGRESSO.md) · requisito → código → teste: [Cobertura do enunciado](#cobertura-do-enunciado).
 >
-> **Produção:** `https://<serviço>.onrender.com/api/v1` · documentação em `/reference` (URL definitivo após o
-> primeiro deploy — ver [Deploy](#deploy-render--neon)).
+> **Produção:** `https://bulir-reservas-api-15sk.onrender.com/api/v1` · documentação em [https://bulir-reservas-api-15sk.onrender.com/reference](https://bulir-reservas-api-15sk.onrender.com/reference)
+> (plano gratuito do Render: o primeiro pedido após inatividade pode demorar ~1 min — ver [Deploy](#deploy-render--neon)).
 
 ## Stack
 
@@ -279,7 +279,7 @@ cobertura, integração e e2e contra um serviço PostgreSQL 16 → build da imag
 
 Em `docs/postman/`: a coleção `bulir-reservas-api.postman_collection.json` (v2.1) e dois ambientes
 (`local.postman_environment.json` com `http://localhost:3000/api/v1`; `production.postman_environment.json` com o
-placeholder `https://<api-em-producao>/api/v1`, a substituir pelo URL do deploy).
+`https://bulir-reservas-api-15sk.onrender.com/api/v1`).
 
 1. Postman > **Import** > selecionar a coleção e os dois ficheiros de ambiente; escolher o ambiente no canto superior direito.
 2. Correr por ordem: **Health** > **Auth** (registo e logins das 4 contas demo, `Senha@123`) > **Services** > **Wallet** >
@@ -354,7 +354,7 @@ expiração; o PostgreSQL gratuito do Render expira ao fim de 30 dias).
    - `CORS_ORIGINS` — URL da app web publicada (ex.: `https://bulir-reservas-web.vercel.app`); várias separadas por vírgulas.
 3. *Apply*. O primeiro deploy constrói a imagem, aplica as migrações, cria as contas de demonstração e só fica
    *live* quando `/api/v1/health` responde `200`.
-4. Verificar: `curl https://<serviço>.onrender.com/api/v1/health` e abrir `https://<serviço>.onrender.com/reference`.
+4. Verificar: `curl https://bulir-reservas-api-15sk.onrender.com/api/v1/health` e abrir `https://bulir-reservas-api-15sk.onrender.com/reference`.
 
 Notas:
 - **Porquê a ligação direta e não a *pooled*:** as migrações precisam de uma ligação de sessão e o pool da aplicação
