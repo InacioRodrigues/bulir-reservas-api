@@ -1,8 +1,8 @@
 /**
  * Arranque da aplicação para os testes e2e: o mesmo `AppModule` e o mesmo
  * pipeline HTTP de `main.ts` (`configureHttpApp`), contra a BD de testes
- * definida em `test/setup/test-env.ts`. Os pedidos vão por Supertest, sem
- * abrir a porta 3000 (o Supertest usa uma porta efémera).
+ * definida em `test/setup/test-env.ts`. Os pedidos vão por Supertest para uma
+ * porta efémera.
  */
 import { randomBytes } from 'node:crypto';
 import { Test } from '@nestjs/testing';
@@ -41,7 +41,10 @@ export async function createE2eApp(): Promise<E2eContext> {
     bodyParser: false,
   });
   configureHttpApp(app);
-  await app.init();
+  // Porta efémera em loopback (nunca a 3000 da API de desenvolvimento). Com o
+  // servidor já à escuta, o Supertest reutiliza-o em vez de abrir um servidor
+  // por pedido — necessário para dezenas de pedidos em paralelo.
+  await app.listen(0, '127.0.0.1');
 
   return {
     app,
