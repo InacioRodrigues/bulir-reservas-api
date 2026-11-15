@@ -1,4 +1,9 @@
-import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import {
+  Module,
+  NestModule,
+  MiddlewareConsumer,
+  RequestMethod,
+} from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -91,6 +96,8 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     // Inject Request ID and Correlation ID context to all requests
-    consumer.apply(RequestContextMiddleware).forRoutes('*');
+    consumer
+      .apply(RequestContextMiddleware)
+      .forRoutes({ path: '*path', method: RequestMethod.ALL });
   }
 }
