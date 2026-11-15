@@ -1,7 +1,18 @@
+# Só o necessário para compilar entra no contexto do build.
+.git
+.github
+.husky
+.vscode
 node_modules
 dist
 coverage
-.env
-.env.local
-.env.*.local
+test
+generated
 *.log
+*.md
+.env
+.env.*
+!.env.example
+Dockerfile*
+docker-compose*.yml
+render.yaml
