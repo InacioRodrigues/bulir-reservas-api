@@ -1,3 +1,5 @@
+import { NotFoundException } from '@common/exceptions';
+import { UserRole } from '@modules/users/domain/entities/user-role';
 import { createBookingsTestKit } from '@test/fakes/bookings-test-kit';
 import { FakeUnitOfWork } from '@test/fakes/fake-unit-of-work';
 import { WalletTransactionScope } from '../../domain/ports/wallet-unit-of-work';
@@ -39,6 +41,15 @@ describe('TopUpWalletUseCase', () => {
       useCase.execute(provider, { amount: '100.00' }),
     ).rejects.toBeInstanceOf(TopUpClientOnlyError);
     expect(wallet.balanceOf(provider.id)).toBe('0.00');
+  });
+
+  it('conta inexistente (token de um utilizador apagado) → 404, sem movimento', async () => {
+    const { useCase } = setup();
+    const ghost = { id: 'nao-existe', role: UserRole.CLIENT };
+
+    await expect(
+      useCase.execute(ghost, { amount: '100.00' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 
