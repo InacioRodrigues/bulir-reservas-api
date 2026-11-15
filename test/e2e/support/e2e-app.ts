@@ -127,7 +127,7 @@ export async function balanceOf(
   return (res.body as { data: { balance: string } }).data.balance;
 }
 
-export async function topUp(ctx: E2eContext, client: TestUser, amount: string) {
+export function topUp(ctx: E2eContext, client: TestUser, amount: string) {
   return ctx
     .http()
     .post(`${API}/wallet/top-up`)
@@ -156,14 +156,26 @@ export async function createService(
     .data;
 }
 
-export async function book(
-  ctx: E2eContext,
-  client: TestUser,
-  serviceId: string,
-) {
+export function book(ctx: E2eContext, client: TestUser, serviceId: string) {
   return ctx
     .http()
     .post(`${API}/bookings`)
     .set(bearer(client))
     .send({ serviceId });
+}
+
+export interface BookingBody {
+  id: string;
+  status: 'CONFIRMED' | 'CANCELLED';
+  price: string;
+}
+
+/** Reserva que tem de ter sucesso (201). */
+export async function bookOk(
+  ctx: E2eContext,
+  client: TestUser,
+  serviceId: string,
+): Promise<BookingBody> {
+  const res = await book(ctx, client, serviceId).expect(201);
+  return (res.body as { data: BookingBody }).data;
 }
