@@ -1,0 +1,48 @@
+# Blueprint do Render (https://render.com/docs/blueprint-spec).
+# Render → New → Blueprint → escolher este repositório. As variáveis com
+# `sync: false` são pedidas no ecrã de criação (nunca ficam no git).
+services:
+  - type: web
+    name: bulir-reservas-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.prod
+    dockerContext: .
+    plan: free
+    # Frankfurt: a região do Render mais próxima de Angola; criar a BD gerida
+    # (ex.: Neon aws-eu-central-1) na mesma região para latência mínima.
+    region: frankfurt
+    branch: main
+    autoDeploy: true
+    # O deploy só fica "live" quando isto responde 200 (BD acessível).
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: '3000'
+      # Ligação direta (não a "pooled"): as migrações precisam dela e o pool
+      # da aplicação envia statement_timeout na ligação.
+      - key: DATABASE_URL
+        sync: false
+      # Segredos aleatórios gerados pelo Render no primeiro deploy.
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRATION
+        value: 15m
+      - key: JWT_REFRESH_EXPIRATION
+        value: 7d
+      # URL(s) da app web publicada, separados por vírgulas.
+      - key: CORS_ORIGINS
+        sync: false
+      # Um load balancer do Render à frente da API → IP real em X-Forwarded-For.
+      - key: TRUST_PROXY
+        value: '1'
+      # Cria as contas de demonstração se ainda não existirem (nunca apaga dados).
+      - key: SEED_DEMO_DATA
+        value: 'true'
+      - key: DB_POOL_MAX
+        value: '5'
+      - key: LOG_LEVEL
+        value: info
