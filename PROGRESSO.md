@@ -9,7 +9,7 @@
 - [x] **Fase 6** — Segurança e desempenho (Helmet, CORS, rate limiting, XSS/CSRF/SQLi, índices)
 - [x] **Fase 7** — Testes (unit + e2e com Postgres real, teste de concorrência, CI)
 - [x] **Fase 8** — Docker, documentação e deploy (falta só o passo manual: criar Neon + Blueprint no Render)
-- [ ] **Fase 9** — Revisão final (checklist requisito → ficheiro/teste)
+- [x] **Fase 9** — Revisão final (checklist requisito → ficheiro/teste)
 
 ## Notas da Fase 0
 
@@ -111,3 +111,11 @@
 - Para a Fase 9: os avisos de Node 20 nas actions (`checkout@v4`, `setup-node@v4`, ...) são só depreciação; atualizar quando
   houver versões novas.
 
+
+## Notas da Fase 9
+
+- Coleção Postman (`docs/postman/`, v2.1) com todos os endpoints, ambientes local/produção e cenários de erro; `newman` contra a API local: 33 pedidos, 49 asserções, 0 falhas.
+- README: secções "Testar com Postman" e "Cobertura do enunciado" (requisito -> ficheiro -> teste).
+- Middleware de contexto com `{ path: '*path' }`: elimina o aviso `LegacyRouteConverter` no arranque.
+- Verificação final: lint, 195 unitários, build e 76 e2e verdes.
+- Pendente (utilizador): deploy em produção (Render + Neon) e substituir o placeholder em `production.postman_environment.json` e no README.

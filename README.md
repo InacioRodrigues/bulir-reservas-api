@@ -4,7 +4,7 @@ API RESTful da plataforma de reservas de serviços da Bulir (Desafio 1 — Backe
 Clientes reservam serviços publicados por prestadores; o saldo de ambos é atualizado de forma atómica
 e todas as reservas ficam registadas em histórico.
 
-> 🚧 Em desenvolvimento — ver [`PROGRESSO.md`](./PROGRESSO.md). Falta a checklist final requisito → ficheiro/teste.
+> Estado e fases: [`PROGRESSO.md`](./PROGRESSO.md) · requisito → código → teste: [Cobertura do enunciado](#cobertura-do-enunciado).
 >
 > **Produção:** `https://<serviço>.onrender.com/api/v1` · documentação em `/reference` (URL definitivo após o
 > primeiro deploy — ver [Deploy](#deploy-render--neon)).
@@ -274,6 +274,22 @@ Ficam fora da cobertura `main.ts`, os `*.module.ts` (ligações de DI) e os dado
 
 **CI** (`.github/workflows/ci.yml`, em cada push/PR): ESLint + Prettier + `npm run build` → unitários com limites de
 cobertura, integração e e2e contra um serviço PostgreSQL 16 → build da imagem Docker de produção.
+
+## Testar com Postman
+
+Em `docs/postman/`: a coleção `bulir-reservas-api.postman_collection.json` (v2.1) e dois ambientes
+(`local.postman_environment.json` com `http://localhost:3000/api/v1`; `production.postman_environment.json` com o
+placeholder `https://<api-em-producao>/api/v1`, a substituir pelo URL do deploy).
+
+1. Postman > **Import** > selecionar a coleção e os dois ficheiros de ambiente; escolher o ambiente no canto superior direito.
+2. Correr por ordem: **Health** > **Auth** (registo e logins das 4 contas demo, `Senha@123`) > **Services** > **Wallet** >
+   **Bookings** > **Cenários de erro** (409 saldo insuficiente, 403 permissões, cancelar duas vezes, 401, 400, 404).
+3. Os scripts de teste guardam sozinhos `accessToken`/`refreshToken` (login, registo, refresh), `token<Conta>` por conta demo,
+   `serviceId`, `demoServiceId` e `bookingId`. O Bearer `{{accessToken}}` é herdado da coleção; as rotas públicas usam *No Auth*
+   e os pedidos que dependem de um papel usam o token dessa conta.
+4. Em linha de comandos: `npx newman run docs/postman/bulir-reservas-api.postman_collection.json -e docs/postman/local.postman_environment.json`
+   (33 pedidos, 49 asserções). Atenção: login e registo têm limite de 5 pedidos por minuto por IP, e a coleção usa exatamente 5.
+   A coleção carrega 1000.00 Kz à Ana (efeito persistente no seed), o resto é reposto (serviço eliminado, reserva cancelada e reembolsada).
 
 ## Docker
 
@@ -567,6 +583,25 @@ users ──< refresh_tokens
   eliminar nesse mesmo instante, a reserva pode concluir-se com os dados do snapshot — equivale a ter chegado um
   milissegundo antes. O histórico e o reembolso continuam corretos porque usam o snapshot.
 - **Só dois papéis, `CLIENT` e `PROVIDER`:** são os únicos que o enunciado define; não há gestão de utilizadores por terceiros.
+
+## Cobertura do enunciado
+
+| Requisito | Onde está | Testes |
+|-----------|-----------|--------|
+| Cadastro (nome, NIF, e-mail, senha; Cliente/Prestador; NIF e e-mail únicos) | `src/modules/auth/application/use-cases/register.use-case.ts`, `src/modules/users/`, `UNIQUE` em `prisma/schema.prisma` | `register.use-case.spec.ts`, `create-user.use-case.spec.ts`, `test/e2e/auth.e2e-spec.ts` (duplicados, corrida de 5 registos) |
+| Autenticação JWT, login por e-mail ou NIF | `login.use-case.ts`, `refresh-session.use-case.ts`, `src/common/guards/jwt-auth.guard.ts`, `roles.guard.ts` | `login.use-case.spec.ts`, `refresh-session.use-case.spec.ts`, `auth.e2e-spec.ts` |
+| Serviços (nome, descrição, preço, prestador); só o dono edita/elimina | `src/modules/services/application/use-cases/*` | `create/update/delete-service.use-case.spec.ts`, `services.e2e-spec.ts` |
+| Reservar com verificação de saldo; saldo de cliente e prestador atualizado | `src/modules/bookings/application/use-cases/create-booking.use-case.ts` | `create-booking.use-case.spec.ts`, `bookings.e2e-spec.ts` |
+| Atomicidade do saldo (sem corridas, nunca negativo) | `IUnitOfWork` + update condicional; `CHECK (balance >= 0)` em `prisma/migrations/20261113200629_add_check_constraints` | `test/integration/booking-concurrency.int-spec.ts`, `test/e2e/concurrency.e2e-spec.ts` (10 pedidos, saldo para 3 -> 3 sucessos, saldo 0) |
+| Cancelar (cliente ou prestador), reembolso, não cancelar duas vezes | `cancel-booking.use-case.ts` | `cancel-booking.use-case.spec.ts`, `bookings.e2e-spec.ts`, `concurrency.e2e-spec.ts` |
+| Permissões para criar/atualizar/cancelar | verificadas nos use cases + `RolesGuard` | specs dos use cases, `403` nos e2e |
+| Histórico de reservas e movimentos | `list-bookings.use-case.ts`, `get-booking.use-case.ts`, `list-wallet-transactions.use-case.ts`, ledger `wallet_transactions` | `list-bookings.use-case.spec.ts`, `bookings.e2e-spec.ts`, `wallet.e2e-spec.ts` |
+| Carregamento de saldo (simulado) | `top-up-wallet.use-case.ts` | `top-up-wallet.use-case.spec.ts`, `wallet.e2e-spec.ts` |
+| BD justificada | [Decisões](#decisões) e [Modelo de dados](#modelo-de-dados) | n/a |
+| SQL Injection, XSS, CSRF, rate limiting | secção [Segurança](#segurança); `app-throttler.guard.ts` | `platform.e2e-spec.ts`, `rate-limit.e2e-spec.ts`, `app-throttler.guard.spec.ts` |
+| Desempenho/gargalos | secção [Desempenho](#desempenho) (índices, paginação, sem N+1) | `list-*` specs, e2e de paginação |
+| Docker dev + prod | `Dockerfile.dev`, `Dockerfile.prod`, `docker-compose.dev.yml`, `docker-compose.yml`, `render.yaml` | `npm run docker:smoke`, job de imagem no CI |
+| Testes automatizados | `src/**/*.spec.ts`, `test/` | CI em `.github/workflows/ci.yml` |
 
 ## Scripts úteis
 
