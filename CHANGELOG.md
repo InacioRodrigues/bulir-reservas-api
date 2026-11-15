@@ -13,12 +13,19 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); 
 - Blueprint do Render (`render.yaml`) para deploy com PostgreSQL gerido (Neon).
 - Seed em modo `ensure` (idempotente, nunca apaga dados); o modo `reset` é recusado em produção.
 - `GET /openapi.json` com o documento OpenAPI; o servidor da spec vem de `APP_URL` (ou `RENDER_EXTERNAL_URL`).
+- Testes e2e com Supertest contra PostgreSQL real (76 testes: auth, serviços, carteira, reservas, histórico,
+  concorrência via HTTP, rate limiting, formato de erro) numa BD de testes `*_test` criada e migrada pelos próprios testes.
+- `npm run test:cov` com limites mínimos de cobertura nos use cases e no domínio; `npm run test:cov:all` com relatório
+  combinado de unitários + integração + e2e.
+- CI com PostgreSQL: lint, Prettier, build, unitários, integração, e2e e build da imagem Docker.
 
 ### Alterado
 - `GET /health` devolve `{ status: "ok", db: "up", uptime, timestamp }` (formato do contrato) e
   `503 DATABASE_UNAVAILABLE` quando a base de dados não responde.
 - `prisma` e `dotenv` passam a dependências de runtime (migrações dentro do contentor).
 - Lockfile regenerado para `npm ci` funcionar com o npm do Node 22.
+- Pipeline HTTP extraído de `main.ts` para `configureHttpApp` (partilhado com os testes e2e).
+- Os testes de integração passam a usar a BD de testes em vez da de desenvolvimento.
 
 ## [0.6.0] — 2026-11-14 — Segurança e desempenho
 

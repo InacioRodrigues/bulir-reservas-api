@@ -4,8 +4,7 @@ API RESTful da plataforma de reservas de serviços da Bulir (Desafio 1 — Backe
 Clientes reservam serviços publicados por prestadores; o saldo de ambos é atualizado de forma atómica
 e todas as reservas ficam registadas em histórico.
 
-> 🚧 Em desenvolvimento — ver [`PROGRESSO.md`](./PROGRESSO.md). Faltam os testes e2e e a
-> checklist final requisito → ficheiro/teste.
+> 🚧 Em desenvolvimento — ver [`PROGRESSO.md`](./PROGRESSO.md). Falta a checklist final requisito → ficheiro/teste.
 >
 > **Produção:** `https://<serviço>.onrender.com/api/v1` · documentação em `/reference` (URL definitivo após o
 > primeiro deploy — ver [Deploy](#deploy-render--neon)).
@@ -195,7 +194,7 @@ Cliente com saldo 5000.00; serviço de 5000.00; dois pedidos em paralelo (READ C
 Em produção é `PrismaUnitOfWork` (`prisma.$transaction`); nos testes unitários é `FakeUnitOfWork`, em memória e com rollback real.
 
 **Testes:** `npm test` cobre as regras (saldo igual ao preço, insuficiente, rollback, permissões, snapshot, duplo cancelamento).
-`npm run test:integration` corre contra o PostgreSQL de `DATABASE_URL` (cria e apaga os próprios utilizadores):
+`npm run test:integration` corre contra a BD de testes `*_test` (ver [Testes](#testes)):
 10 reservas em paralelo com saldo para 3 → exatamente 3 sucessos e saldo 0.00; 10 cancelamentos em paralelo → 1 sucesso
 e um só reembolso; 20 carregamentos em paralelo → nenhum perdido; operações cruzadas entre vários clientes e prestadores →
 sem deadlocks, sem saldos negativos, `SUM(ledger) = saldo` para todos e o total de dinheiro conservado.
@@ -217,6 +216,64 @@ sem deadlocks, sem saldos negativos, `SUM(ledger) = saldo` para todos e o total 
   `(provider_id, created_at DESC)` e `wallet_transactions (user_id, created_at DESC)` — o `ORDER BY created_at DESC`
   sai do próprio índice, sem ordenação em memória. `id` desempata para a paginação ser estável.
   `select` explícito: nunca se leem password hash, NIF ou saldo da outra parte.
+
+## Testes
+
+Três níveis, cada um a provar uma coisa diferente:
+
+| Nível | Comando | O que prova | Onde |
+|-------|---------|-------------|------|
+| Unitários | `npm test` / `npm run test:cov` | Regras de negócio dos use cases e do domínio, sem BD (repositórios em memória e `FakeUnitOfWork` com rollback) | `src/**/*.spec.ts`, `test/fakes` |
+| Integração | `npm run test:integration` | As garantias vêm da BD: use cases + repositórios Prisma com pedidos realmente paralelos | `test/integration` |
+| End-to-end | `npm run test:e2e` | O contrato HTTP: rotas, guards, validação, códigos e corpo de erro, através do mesmo pipeline de `main.ts` | `test/e2e` |
+
+**BD de testes separada.** Integração e e2e nunca tocam na BD de desenvolvimento: usam `TEST_DATABASE_URL` ou, na falta
+dele, o `DATABASE_URL` com o nome terminado em `_test` (`bulir_reservas` → `bulir_reservas_test`, no mesmo PostgreSQL).
+O `test/setup/global-setup.ts` cria essa BD se não existir, aplica as migrações reais (com os `CHECK`) e esvazia as tabelas;
+qualquer operação destrutiva recusa uma BD cujo nome não termine em `_test`. Basta o PostgreSQL do `npm run docker:dev`.
+
+**App real, porta efémera.** Os e2e arrancam o `AppModule` com `configureHttpApp` (o mesmo de `main.ts`: Helmet, CORS,
+parser JSON com limite, prefixo, documentação) numa porta aleatória em `127.0.0.1` e falam com ela por Supertest.
+Cada teste regista os próprios utilizadores (e-mail/NIF aleatórios), por isso não dependem de ordem nem do seed.
+
+**Rate limiting nos testes.** `test/setup/test-env.ts` sobe `THROTTLE_LIMIT`, `AUTH_THROTTLE_LIMIT` e `MONEY_THROTTLE_LIMIT`
+(os testes fazem dezenas de logins e reservas por minuto do mesmo IP). `test/e2e/rate-limit.e2e-spec.ts` volta a baixá-los
+(os limites por rota são lidos em cada pedido) e prova o `429 TOO_MANY_REQUESTS` com `Retry-After`, por IP no login e por
+utilizador nas operações de dinheiro.
+
+**O que os e2e cobrem** (`test/e2e`):
+- `auth` — registo com normalização, campos extra ignorados (`balance`), `409 EMAIL_ALREADY_EXISTS`/`NIF_ALREADY_EXISTS`,
+  5 registos simultâneos com o mesmo e-mail → um `201` e quatro `409` (UNIQUE da BD), `400` por campo, login por e-mail e
+  por NIF, `401 INVALID_CREDENTIALS` igual para password errada e utilizador inexistente, `/auth/me`, rotação e revogação do refresh token.
+- `services` — só `PROVIDER` cria (`403` para cliente, `401` sem token), preço inválido (`0`, negativo, 3 casas, número JSON,
+  acima do máximo), pesquisa/filtros/ordenação/paginação, `%` literal, `/mine`, `400` para id não-UUID, `404`, edição e
+  eliminação por outro prestador → `403`, soft delete → `404` e fora da listagem.
+- `wallet` — carregamento, extrato com sinal e `balanceAfter`, `403` para prestador, limites do valor.
+- `bookings` — reserva debita/credita, saldo igual ao preço basta, saldo insuficiente → `409` sem efeitos, prestador não reserva,
+  serviço eliminado → `404`, cancelamento pelo cliente e pelo prestador com reembolso, duplo cancelamento → `409`, terceiros → `403`,
+  snapshot de nome/preço no histórico, filtro por estado, ledger de cliente e prestador.
+- `concurrency` — via HTTP: saldo para 3 reservas e 10 pedidos em paralelo → exatamente 3 × `201`, 7 × `409`, saldo `0.00`;
+  10 cancelamentos simultâneos (cliente e prestador) → 1 × `200`, um só reembolso; 20 carregamentos em paralelo sem perdas;
+  reservas e cancelamentos cruzados entre 3 clientes e 2 prestadores → nenhum `500`, nenhum saldo negativo, dinheiro total
+  conservado e `SUM(extrato) = saldo` para todos.
+- `platform` — `/health` no formato do contrato, headers de segurança, `404`/`413`/`415`/JSON inválido com o corpo de erro padrão,
+  `/openapi.json` e `/reference`.
+
+**Cobertura.** `npm run test:cov` (unitários) falha se algum use case descer de 90 % (linhas/statements/funções; 85 % ramos)
+ou algum ficheiro de domínio de 85 %. `npm run test:cov:all` junta unitários + integração + e2e num único relatório
+(`coverage/all/lcov-report/index.html`). Valores atuais:
+
+| Relatório | Statements | Branches | Functions | Lines |
+|-----------|-----------:|---------:|----------:|------:|
+| Unitários (todo o `src/`) | 53.9 % | 48.9 % | 55.0 % | 54.3 % |
+| Unitários — use cases e domínio | ≥ 88 % por ficheiro (a maioria 100 %) | | | |
+| Unitários + integração + e2e | 96.1 % | 80.8 % | 95.2 % | 96.1 % |
+
+Os unitários ficam de propósito nas regras; controllers, repositórios Prisma, guards e configuração são cobertos pelos e2e.
+Ficam fora da cobertura `main.ts`, os `*.module.ts` (ligações de DI) e os dados estáticos da spec OpenAPI.
+
+**CI** (`.github/workflows/ci.yml`, em cada push/PR): ESLint + Prettier + `npm run build` → unitários com limites de
+cobertura, integração e e2e contra um serviço PostgreSQL 16 → build da imagem Docker de produção.
 
 ## Docker
 
@@ -518,8 +575,10 @@ users ──< refresh_tokens
 | `npm run build` | Compila para `dist/` |
 | `npm run lint:check` | ESLint + Prettier |
 | `npm test` | Testes unitários |
-| `npm run test:integration` | Concorrência contra o PostgreSQL de `DATABASE_URL` |
-| `npm run test:e2e` | Testes end-to-end |
+| `npm run test:cov` | Unitários com cobertura e limites mínimos nos use cases/domínio |
+| `npm run test:integration` | Concorrência dos use cases contra a BD de testes `*_test` |
+| `npm run test:e2e` | Testes end-to-end HTTP contra a BD de testes `*_test` |
+| `npm run test:cov:all` | Unitários + integração + e2e com relatório de cobertura combinado |
 | `npm run db:seed` | Recria os dados de demonstração (`SEED_MODE=ensure` para não apagar nada) |
 | `npm run docker:smoke` | Build da imagem de produção + smoke test com `curl` |
 | `npm run docker:prod` | Imagem de produção + PostgreSQL locais (exige `POSTGRES_PASSWORD` e segredos JWT) |
