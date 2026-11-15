@@ -1,14 +1,13 @@
 /**
- * Concorrência contra um PostgreSQL real (o mesmo de `DATABASE_URL`).
+ * Concorrência contra um PostgreSQL real: a BD de testes (`*_test`), criada e
+ * migrada por `test/setup/global-setup.ts` — nunca a de desenvolvimento.
  *
  * Os testes unitários provam as regras; estes provam que as garantias vêm da
  * BD (UPDATE condicional, locks de linha, CHECK, UNIQUE) quando há pedidos
  * realmente paralelos, cada um na sua ligação do pool.
  *
- * Cria utilizadores próprios (e-mails/NIF aleatórios) e apaga-os no fim:
- * não toca nos dados do seed.
+ * Cria utilizadores próprios (e-mails/NIF aleatórios) e apaga-os no fim.
  */
-import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
 import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';

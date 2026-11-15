@@ -14,5 +14,8 @@
     "^@providers/(.*)$": "<rootDir>/src/providers/$1",
     "^@database/(.*)$": "<rootDir>/src/database/$1",
     "^@test/(.*)$": "<rootDir>/test/$1"
-  }
+  },
+  "globalSetup": "<rootDir>/test/setup/global-setup.ts",
+  "setupFiles": ["<rootDir>/test/setup/test-env.ts"],
+  "testTimeout": 60000
 }
