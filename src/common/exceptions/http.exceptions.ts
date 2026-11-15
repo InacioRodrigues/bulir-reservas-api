@@ -58,3 +58,13 @@ export class InternalServerException extends BaseException {
     super(message, HttpStatus.INTERNAL_SERVER_ERROR, code, errors);
   }
 }
+
+/** 503: uma dependência (ex.: a base de dados) não está disponível. */
+export class ServiceUnavailableException extends BaseException {
+  constructor(
+    message = 'Serviço temporariamente indisponível',
+    code = 'SERVICE_UNAVAILABLE',
+  ) {
+    super(message, HttpStatus.SERVICE_UNAVAILABLE, code);
+  }
+}

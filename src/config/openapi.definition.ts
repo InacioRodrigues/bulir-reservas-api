@@ -209,9 +209,28 @@ export const openApiSpec = {
       get: {
         summary: 'Verificar estado da aplicação',
         tags: ['Health'],
+        description:
+          'Sonda pública usada pelo healthcheck do Docker e da plataforma de deploy. `200` só quando a base de dados responde.',
+        security: [],
         responses: {
           '200': {
-            description: 'Uptime e estado dos serviços internos',
+            description: 'API e base de dados operacionais',
+            content: {
+              'application/json': {
+                example: {
+                  success: true,
+                  data: {
+                    status: 'ok',
+                    db: 'up',
+                    uptime: 1234,
+                    timestamp: '2026-11-15T10:00:00.000Z',
+                  },
+                },
+              },
+            },
+          },
+          '503': {
+            description: 'Base de dados inacessível (`DATABASE_UNAVAILABLE`)',
           },
         },
       },
