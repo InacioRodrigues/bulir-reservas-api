@@ -1,5 +1,6 @@
-version: '3.8'
-
+# Desenvolvimento. Por omissão sobe só o PostgreSQL (a API corre no host com
+# `npm run start:dev`). Para correr também a API em contentor:
+#   docker compose -f docker-compose.dev.yml --profile api up -d
 services:
   postgres:
     image: postgres:16-alpine
@@ -13,10 +14,32 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d bulir_reservas"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d bulir_reservas']
       interval: 5s
       timeout: 5s
       retries: 5
+
+  api:
+    profiles: ['api']
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - '3000:3000'
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/bulir_reservas?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_access_secret_change_me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_refresh_secret_change_me}
+    volumes:
+      - ./src:/usr/src/app/src
+      - ./prisma:/usr/src/app/prisma
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   pgdata:

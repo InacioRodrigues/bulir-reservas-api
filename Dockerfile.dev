@@ -1,16 +1,14 @@
+# Imagem de desenvolvimento: código montado por volume e `nest start --watch`.
 FROM node:22-alpine
-
+RUN apk add --no-cache openssl
 WORKDIR /usr/src/app
 
-COPY package*.json ./
-COPY prisma ./prisma/
-
-RUN npm install
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+RUN npm ci --no-audit --no-fund
 
 COPY . .
-
 RUN npx prisma generate
 
 EXPOSE 3000
-
-CMD ["npm", "run", "start:dev"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npm run start:dev"]
