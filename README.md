@@ -550,6 +550,11 @@ users ──< refresh_tokens
 
 ## Decisões
 
+- **"Histórico de todas as transações" = todas as transações *em que o utilizador participa*.** O enunciado pede um
+  histórico de todas as reservas da plataforma; a tabela `bookings` guarda-as todas (nunca são apagadas, com snapshot
+  de preço/nome). Mas expor as reservas de terceiros a qualquer utilizador seria uma fuga de dados (valores, NIFs,
+  nomes), por isso `GET /bookings` devolve só as do cliente/prestador autenticado. Não há papel de administrador no
+  enunciado; uma vista global seria um endpoint extra com papel `ADMIN`.
 - **PostgreSQL (SQL) em vez de MongoDB.** Os dados são relacionais (utilizador ↔ serviço ↔ reserva) e o núcleo do
   problema é dinheiro: precisamos de transações ACID multi-linha, `CHECK` e chaves estrangeiras. O MongoDB também tem
   transações (só em *replica set*) mas não tem `CHECK` nem integridade referencial — teríamos de reimplementar isso na aplicação.
