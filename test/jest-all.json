@@ -1,0 +1,17 @@
+{
+  "rootDir": "../",
+  "projects": [
+    "<rootDir>",
+    "<rootDir>/test/jest-integration.json",
+    "<rootDir>/test/jest-e2e.json"
+  ],
+  "collectCoverageFrom": [
+    "<rootDir>/src/**/*.ts",
+    "!<rootDir>/src/**/*.spec.ts",
+    "!<rootDir>/src/main.ts",
+    "!<rootDir>/src/**/*.module.ts",
+    "!<rootDir>/src/config/openapi.*.ts"
+  ],
+  "coverageDirectory": "<rootDir>/coverage/all",
+  "coverageReporters": ["text-summary", "lcov", "json-summary"]
+}

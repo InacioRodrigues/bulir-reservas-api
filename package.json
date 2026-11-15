@@ -31,6 +31,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
+    "test:cov:all": "jest --config ./test/jest-all.json --coverage --runInBand",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
     "test:integration": "jest --config ./test/jest-integration.json --runInBand",
@@ -102,6 +103,7 @@
     "typescript-eslint": "^8.62.1"
   },
   "jest": {
+    "displayName": "unit",
     "moduleFileExtensions": [
       "js",
       "json",
@@ -113,7 +115,10 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.ts",
+      "!main.ts",
+      "!**/*.module.ts",
+      "!config/openapi.*.ts"
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
@@ -125,6 +130,24 @@
       "^@providers/(.*)$": "<rootDir>/providers/$1",
       "^@database/(.*)$": "<rootDir>/database/$1",
       "^@test/(.*)$": "<rootDir>/../test/$1"
+    },
+    "coverageReporters": [
+      "text-summary",
+      "lcov",
+      "json-summary"
+    ],
+    "coverageThreshold": {
+      "./src/modules/*/application/use-cases/*.ts": {
+        "statements": 90,
+        "branches": 85,
+        "functions": 90,
+        "lines": 90
+      },
+      "./src/modules/*/domain/**/*.ts": {
+        "statements": 85,
+        "branches": 80,
+        "lines": 85
+      }
     }
   }
 }
