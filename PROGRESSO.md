@@ -8,7 +8,7 @@
 - [x] **Fase 5** — Histórico (reservas e movimentos de carteira paginados, sem N+1)
 - [x] **Fase 6** — Segurança e desempenho (Helmet, CORS, rate limiting, XSS/CSRF/SQLi, índices)
 - [ ] **Fase 7** — Testes (unit + e2e com Postgres real, teste de concorrência, CI)
-- [ ] **Fase 8** — Docker, documentação e deploy
+- [x] **Fase 8** — Docker, documentação e deploy (falta só o passo manual: criar Neon + Blueprint no Render)
 - [ ] **Fase 9** — Revisão final (checklist requisito → ficheiro/teste)
 
 ## Notas da Fase 0
@@ -80,3 +80,17 @@
 - Lint proíbe `$queryRawUnsafe`/`$executeRawUnsafe`. README › Segurança e Desempenho; contrato com 413/415 e limites.
 - Para a Fase 7: os testes e2e devem subir `AUTH_THROTTLE_LIMIT`/`MONEY_THROTTLE_LIMIT`; o URL do servidor na spec
   OpenAPI está fixo em `http://localhost:3000` (ajustar na Fase 8).
+
+## Notas da Fase 8
+
+- Feita antes da Fase 7 para desbloquear a web e o mobile com a API em produção.
+- `Dockerfile.prod` em 3 estágios (deps → builder → runner `node:22-alpine`), processo como `node`, `tini`, `HEALTHCHECK`;
+  `scripts/docker-entrypoint.sh` aplica `prisma migrate deploy` (`RUN_MIGRATIONS`) e o seed `ensure` (`SEED_DEMO_DATA`).
+- `prisma` e `dotenv` em `dependencies` (a CLI corre no contentor); seed compilado para `dist/prisma/seed.js` (`build:seed`).
+- Seed: `reset` (apaga tudo, recusado em produção) e `ensure` (idempotente, só cria as contas se nenhuma existir).
+- `GET /health` no formato do contrato e `503 DATABASE_UNAVAILABLE` sem BD; `GET /openapi.json`; servidor da spec = `APP_URL`
+  (ou `RENDER_EXTERNAL_URL`).
+- `npm run docker:smoke`: imagem + PostgreSQL descartáveis, 13 verificações com `curl` (inclui reinício idempotente). Verde.
+- Lockfile regenerado com npm 10: o `npm ci` do Node 22 (CI e Docker) falhava com o lockfile anterior.
+- `render.yaml` (Docker, Frankfurt, health check, segredos JWT gerados) + Neon; passo-a-passo no README › Deploy.
+- Para a Fase 7: `test/app.e2e-spec.ts` ainda espera o formato antigo do `/health` (`uptime`/`details.database`) — reescrever.
