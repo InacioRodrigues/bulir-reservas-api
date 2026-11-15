@@ -7,7 +7,7 @@
 - [x] **Fase 4** — Carteira e reservas (top-up, reserva e cancelamento atómicos, ledger)
 - [x] **Fase 5** — Histórico (reservas e movimentos de carteira paginados, sem N+1)
 - [x] **Fase 6** — Segurança e desempenho (Helmet, CORS, rate limiting, XSS/CSRF/SQLi, índices)
-- [ ] **Fase 7** — Testes (unit + e2e com Postgres real, teste de concorrência, CI)
+- [x] **Fase 7** — Testes (unit + e2e com Postgres real, teste de concorrência, CI)
 - [x] **Fase 8** — Docker, documentação e deploy (falta só o passo manual: criar Neon + Blueprint no Render)
 - [ ] **Fase 9** — Revisão final (checklist requisito → ficheiro/teste)
 
@@ -94,3 +94,20 @@
 - Lockfile regenerado com npm 10: o `npm ci` do Node 22 (CI e Docker) falhava com o lockfile anterior.
 - `render.yaml` (Docker, Frankfurt, health check, segredos JWT gerados) + Neon; passo-a-passo no README › Deploy.
 - Para a Fase 7: `test/app.e2e-spec.ts` ainda espera o formato antigo do `/health` (`uptime`/`details.database`) — reescrever.
+
+## Notas da Fase 7
+
+- BD de testes separada: `TEST_DATABASE_URL` ou `DATABASE_URL` com sufixo `_test` (`bulir_reservas_test`); criada, migrada
+  e esvaziada por `test/setup/global-setup.ts`; operações destrutivas recusam nomes sem `_test`. A integração deixou de usar a BD de dev.
+- `configureHttpApp` (`src/bootstrap`) partilhado entre `main.ts` e os e2e; a app de teste escuta numa porta efémera em
+  `127.0.0.1` (sem isto, pedidos paralelos do Supertest davam `ECONNRESET`).
+- e2e (`test/e2e`, 7 ficheiros, 76 testes): platform, auth, services, wallet, bookings, concurrency, rate-limit.
+  Limites de throttle altos em `test/setup/test-env.ts`; o ficheiro de rate limit baixa-os por teste (lidos por pedido).
+- O `@scalar/nestjs-api-reference` depende de um pacote só ESM: os e2e transformam `node_modules/@scalar` com ts-jest.
+- Cobertura: unitários 53.9 % no total, ≥ 88.9 % por ficheiro em use cases/domínio (limites 90/85 no `test:cov`);
+  unitários + integração + e2e 96.1 % statements / 80.8 % branches (`test:cov:all`).
+- Removido `User.updatePassword` (código morto); testes novos para `User`, `GetUserUseCase` e top-up de conta inexistente.
+- CI verde no GitHub: lint + Prettier + build → unit (195) + integração (4) + e2e (76) com PostgreSQL 16 → imagem Docker.
+- Para a Fase 9: os avisos de Node 20 nas actions (`checkout@v4`, `setup-node@v4`, ...) são só depreciação; atualizar quando
+  houver versões novas.
+
